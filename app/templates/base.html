@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Backtesting System{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/favicon.svg') }}">
+    <!-- Base Theme -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <!-- Page-specific CSS -->
+    {% block page_css %}{% endblock %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-brand">
+                <a href="{{ url_for('results.results_page') }}" class="brand-link">
+                    <span>Backtest</span>
+                </a>
+            </div>
+            <ul class="navbar-nav">
+                <li><a href="{{ url_for('results.results_page') }}" class="nav-link {% if request.endpoint == 'results.results_page' %}active{% endif %}">Results</a></li>
+                <li class="nav-dropdown">
+                    <a href="#" class="nav-link {% if request.endpoint in ['data.data_management', 'strategies.strategy_management'] %}active{% endif %}">Setup ▾</a>
+                    <div class="dropdown-menu">
+                        <a href="{{ url_for('data.data_management') }}" class="dropdown-item">Data</a>
+                        <a href="{{ url_for('strategies.strategy_management') }}" class="dropdown-item">Strategies</a>
+                    </div>
+                </li>
+                <li class="nav-dropdown">
+                    <a href="#" class="nav-link {% if request.endpoint in ['backtest.backtest_page', 'optimize.optimize_page'] %}active{% endif %}">Testing ▾</a>
+                    <div class="dropdown-menu">
+                        <a href="{{ url_for('backtest.backtest_page') }}" class="dropdown-item">Backtest</a>
+                        <a href="{{ url_for('optimize.optimize_page') }}" class="dropdown-item">Optimize</a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <main style="padding: 2rem 0; min-height: calc(100vh - 140px);">
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- footer removed per request -->
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

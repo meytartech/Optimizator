@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Backtests - Backtesting System{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/compare.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-main">
+        <h1>Backtest Comparison</h1>
+    </div>
+    <a href="{{ url_for('results.results_page') }}" class="btn btn-secondary">← Back to Results</a>
+</div>
+
+<div class="comparison-container">
+    <!-- Metrics Comparison Table -->
+    <div class="section-card accordion-section">
+        <h2 class="accordion-header" onclick="toggleAccordion(this)">
+            <span>Performance Metrics</span>
+            <span class="accordion-icon">▼</span>
+        </h2>
+        <div class="accordion-content active">
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th class="metric-label">Metric</th>
+                        {% for comp in comparisons %}
+                        <th class="backtest-column">
+                            <div class="backtest-header">
+                                <div class="backtest-name">{{ comp.strategy }}</div>
+                                <div class="backtest-date">{{ comp.date }}</div>
+                            </div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Total Return -->
+                    <tr>
+                        <td class="metric-label">Total Return</td>
+                        {% for comp in comparisons %}
+                        {% set return_val = comp.results.get('total_return', 0) %}
+                        <td class="metric-value {% if return_val > 0 %}positive{% elif return_val < 0 %}negative{% endif %}">
+                            {{ "%.2f"|format(return_val) }}%
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Win Rate -->
+                    <tr>
+                        <td class="metric-label">Win Rate</td>
+                        {% for comp in comparisons %}
+                        {% set win_rate = comp.results.get('win_rate', 0) %}
+                        <td class="metric-value {% if win_rate >= 50 %}positive{% endif %}">
+                            {{ "%.2f"|format(win_rate) }}%
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Profit Factor -->
+                    <tr>
+                        <td class="metric-label">Profit Factor</td>
+                        {% for comp in comparisons %}
+                        {% set pf = comp.results.get('profit_factor', 0) %}
+                        <td class="metric-value {% if pf > 1 %}positive{% elif pf < 1 %}negative{% endif %}">
+                            {{ "%.2f"|format(pf) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Sharpe Ratio -->
+                    <tr>
+                        <td class="metric-label">Sharpe Ratio</td>
+                        {% for comp in comparisons %}
+                        {% set sharpe = comp.results.get('sharpe_ratio', 0) %}
+                        <td class="metric-value {% if sharpe > 1 %}positive{% endif %}">
+                            {{ "%.2f"|format(sharpe) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Max Drawdown -->
+                    <tr>
+                        <td class="metric-label">Max Drawdown</td>
+                        {% for comp in comparisons %}
+                        {% set dd = comp.results.get('max_drawdown', 0) %}
+                        <td class="metric-value negative">
+                            {{ "%.2f"|format(dd) }}%
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Average RR -->
+                    <tr>
+                        <td class="metric-label">Avg Risk/Reward</td>
+                        {% for comp in comparisons %}
+                        {% set rr = comp.results.get('avg_rr', 0) %}
+                        <td class="metric-value {% if rr > 1 %}positive{% endif %}">
+                            {{ "%.2f"|format(rr) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Total Trades -->
+                    <tr>
+                        <td class="metric-label">Total Trades</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value">
+                            {{ comp.results.get('total_trades', 0) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Avg Trade -->
+                    <tr>
+                        <td class="metric-label">Avg Trade</td>
+                        {% for comp in comparisons %}
+                        {% set total_trades = comp.results.get('total_trades', 1) %}
+                        {% set avg_trade = (comp.results.get('total_return', 0) / total_trades) if total_trades > 0 else 0 %}
+                        <td class="metric-value {% if avg_trade > 0 %}positive{% elif avg_trade < 0 %}negative{% endif %}">
+                            {{ "%.2f"|format(avg_trade) }}%
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Consecutive Wins -->
+                    <tr>
+                        <td class="metric-label">Max Consecutive Wins</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value">
+                            {{ comp.results.get('max_consecutive_wins', 0) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    
+                    <!-- Consecutive Losses -->
+                    <tr>
+                        <td class="metric-label">Max Consecutive Losses</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value">
+                            {{ comp.results.get('max_consecutive_losses', 0) }}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+
+    <!-- Trade Statistics Comparison -->
+    <div class="section-card accordion-section">
+        <h2 class="accordion-header" onclick="toggleAccordion(this)">
+            <span>Trade Statistics</span>
+            <span class="accordion-icon">▼</span>
+        </h2>
+        <div class="accordion-content active">
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th class="metric-label">Statistic</th>
+                        {% for comp in comparisons %}
+                        <th class="backtest-column">{{ comp.strategy }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-label">Total Trades</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value">{{ comp.results.get('total_trades', 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Winning Trades</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value positive">{{ comp.results.get('winning_trades', 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Losing Trades</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value negative">{{ comp.results.get('losing_trades', 0) }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Avg Win</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value positive">{{ "%.2f"|format(comp.results.get('avg_win', 0)) }}$</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Avg Loss</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value negative">{{ "%.2f"|format(comp.results.get('avg_loss', 0)) }}$</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Total Commissions</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value negative">${{ "%.2f"|format(comp.results.get('total_commissions', 0)) }}</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Largest Win</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value positive">{{ "%.2f"|format(comp.results.get('largest_win', 0)) }}$</td>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        <td class="metric-label">Largest Loss</td>
+                        {% for comp in comparisons %}
+                        <td class="metric-value negative">{{ "%.2f"|format(comp.results.get('largest_loss', 0)) }}$</td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        </div>
+    </div>
+
+    <!-- Equity Curves -->
+    <div class="section-card accordion-section">
+        <h2 class="accordion-header" onclick="toggleAccordion(this)">
+            <span>Equity Curves</span>
+            <span class="accordion-icon">▼</span>
+        </h2>
+        <div class="accordion-content active">
+            <div class="equity-curves-grid">
+            {% for comp in comparisons %}
+            <div class="equity-curve-item">
+                <h3>{{ comp.strategy }}</h3>
+                <p class="equity-date">{{ comp.date }}</p>
+                {% if comp.has_equity %}
+                <img src="{{ url_for('results.serve_equity_curve', result_id=comp.id) }}" 
+                     alt="Equity Curve for {{ comp.strategy }}"
+                     class="equity-curve-img"
+                     onclick="openImageModal(this.src, '{{ comp.strategy }}')">
+                {% else %}
+                <div class="no-equity">No equity curve available</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        </div>
+    </div>
+
+    <!-- View Individual Results -->
+    <div class="section-card">
+        <h2>View Full Results</h2>
+        <div class="view-links">
+            {% for comp in comparisons %}
+            <a href="{{ url_for('results.view_backtest_result', result_id=comp.id) }}" 
+               class="btn btn-primary">
+                View {{ comp.strategy }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div id="imageModal" class="image-modal" onclick="closeImageModal()">
+    <span class="modal-close">&times;</span>
+    <img class="modal-content" id="modalImage">
+    <div class="modal-caption" id="modalCaption"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function toggleAccordion(header) {
+    const content = header.nextElementSibling;
+    const icon = header.querySelector('.accordion-icon');
+    
+    if (content.classList.contains('active')) {
+        content.classList.remove('active');
+        icon.textContent = '▶';
+    } else {
+        content.classList.add('active');
+        icon.textContent = '▼';
+    }
+}
+
+function openImageModal(src, caption) {
+    const modal = document.getElementById('imageModal');
+    const modalImg = document.getElementById('modalImage');
+    const modalCaption = document.getElementById('modalCaption');
+    
+    modal.style.display = 'block';
+    modalImg.src = src;
+    modalCaption.textContent = caption;
+    document.body.style.overflow = 'hidden';
+}
+
+function closeImageModal() {
+    const modal = document.getElementById('imageModal');
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeImageModal();
+    }
+});
+</script>
+{% endblock %}

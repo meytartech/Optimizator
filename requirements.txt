@@ -1,0 +1,11 @@
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+SQLAlchemy>=2.0
+requests>=2.31
+eventlet>=0.36
+python-dateutil>=2.8
+pytz>=2024.1
+streamlit>=1.39
+plotly>=5.22
+openpyxl>=3.1

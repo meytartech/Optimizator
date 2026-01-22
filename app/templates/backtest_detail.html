@@ -1,0 +1,1707 @@
+{% extends "base.html" %}
+
+{% block title %}Backtest Results - {{ display_title or result_id }}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">
+{% if unsaved %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/backtest.css') }}">
+{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div id="shareSnapshotArea">
+<div class="page-header">
+    <div>
+        <h1>{{ display_title or result_id }}</h1>
+        <p id="descriptionDisplay" class="description-text" style="color: var(--text-muted); font-size: 0.85rem; line-height: 1.3; white-space: pre-wrap; word-wrap: break-word; margin: 0.25rem 0 0 0; padding: 0.25rem 0; cursor: pointer; transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-muted)'" onclick="toggleDescriptionEdit()">{{ results['description'] or 'Click to add description...' }}</p>
+        <div id="descActionBtns" style="display: none; gap: 0.5rem; margin: 0.25rem 0 0.75rem 0;">
+        <textarea id="descriptionEdit" class="form-input" style="display: none; resize: vertical; padding: 0.5rem; font-family: inherit; margin: 0.25rem 0px; font-size: 0.85rem; max-height: 5rem; max-width: 90%; min-height: 2rem;height: 2rem;"></textarea>
+            <button class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.85rem;" onclick="saveDescription()">Save</button>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.85rem;" onclick="cancelDescriptionEdit()">Cancel</button>
+        </div>
+    </div>
+    <div style="display: flex; gap: 0.5rem;padding: 0.4rem 0;">
+        {% if unsaved %}
+            <button id="rerunBtn" class="btn btn-secondary" onclick="rerunBacktest()">⚡ Compile</button>
+            <button id="saveBtn" class="btn btn-secondary" onclick="saveBacktest()">💾 Save</button>
+            <button id="shareBtn" class="btn btn-secondary" onclick="shareResults()">🔗</button>
+            <button id="showConsoleBtn" class="btn btn-secondary" onclick="toggleConsole()">🪐</button>
+        {% else %}
+            <a href="{{ url_for('results.results_page') }}" class="btn btn-secondary">Back to Results</a>
+            {% if '/' not in result_id %}
+            <button onclick="deleteBacktest()" class="btn btn-danger">Delete</button>
+            {% endif %}
+            <button id="shareBtn" class="btn btn-secondary" onclick="shareResults()">🔗</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="metrics-grid">
+    <div class="metric-box">
+        <div class="metric-box-label">Total Return%</div>
+        <div class="metric-box-value {% if results['total_return'] | default(0) > 0 %}positive{% else %}negative{% endif %}">
+            {% if results['total_return'] is defined %}{{ results['total_return']|round(2) }}%{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Win Rate</div>
+        <div class="metric-box-value {% if results['win_rate'] is defined and results['win_rate'] > 50 %}positive{% endif %}">
+            {% if results['win_rate'] is defined %}{{ results['win_rate']|round(2) }}%{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Total Trades</div>
+        <div class="metric-box-value">{{ results['total_trades'] | default('N/A') }}</div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">({{ results['unique_entries'] | default('N/A') }} entries)</div>
+    </div>
+        <div class="metric-box">
+        <div class="metric-box-label">AVG Risk Reward</div>
+        <div class="metric-box-value {% if results['avg_win'] is defined and results['avg_loss'] is defined and results['avg_loss'] != 0 and (results['avg_win'] / results['avg_loss']) > 1 %}positive{% endif %}">
+            {% if results['avg_win'] is defined and results['avg_loss'] is defined and results['avg_loss'] != 0 %}
+                {{ "%.2f"|format(results['avg_rr']) }}
+            {% else %}
+                -
+            {% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Realized Points</div>
+        <div class="metric-box-value {% if (results['realized_points'] | default(0)) > 0 %}positive{% else %}negative{% endif %}">
+            {% if results['realized_points'] is defined %}{{ "%.2f"|format(results['realized_points']) }}{% else %}-{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Realized P&L</div>
+        <div class="metric-box-value {% if (results['final_equity'] - results['initial_capital']) > 0 %}positive{% else %}negative{% endif %}">
+            ${{ "{:,.2f}".format(results['final_equity'] - results['initial_capital']) }}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Avg Win / Avg Loss</div>
+        <div class="metric-box-value">
+            {% if results['avg_win'] is defined and results['avg_loss'] is defined %}
+                ${{ "{:,.2f}".format(results['avg_win']) }} / ${{ "{:,.2f}".format(results['avg_loss']|abs) }}
+            {% else %}
+                N/A / N/A
+            {% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Max Drawdown</div>
+        <div class="metric-box-value negative">
+            {% if results['max_drawdown_points'] is defined and results['max_drawdown'] is defined %}
+                {{ "%.2f"|format(results['max_drawdown_points']) }} pts ({{ results['max_drawdown']|round(2) }}%)
+            {% elif results['max_drawdown_points'] is defined %}
+                {{ "%.2f"|format(results['max_drawdown_points']) }} pts
+            {% elif results['max_drawdown'] is defined %}
+                {{ results['max_drawdown']|round(2) }}%
+            {% else %}
+                -
+            {% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Profit Factor</div>
+        <div class="metric-box-value">
+            {% if results['profit_factor'] is defined %}{{ "%.2f"|format(results['profit_factor']) }}{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Sharpe Ratio</div>
+        <div class="metric-box-value">
+            {% if results['sharpe_ratio'] is defined %}{{ "%.3f"|format(results['sharpe_ratio']) }}{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Final Equity</div>
+        <div class="metric-box-value">
+            {% if results['final_equity'] is defined %}${{ "{:,.2f}".format(results['final_equity']) }}{% else %}N/A{% endif %}
+        </div>
+    </div>
+    <div class="metric-box">
+        <div class="metric-box-label">Total Commissions</div>
+        <div class="metric-box-value negative">
+            {% if results['total_commissions'] is defined %}${{ "{:,.2f}".format(results['total_commissions']) }}{% else %}N/A{% endif %}
+        </div>
+    </div>
+</div>
+
+{% if results['session_stats'] | default({}) and results['session_stats'].items() | length > 0 %}
+<h2 style="margin-top: 2rem; margin-bottom: 1rem;">Session Analysis</h2>
+<div class="metrics-grid">
+    {% for session, stats in results['session_stats'].items() %}
+    <div class="metric-box">
+        <div class="metric-box-label">{{ session }} Session</div>
+        <div class="metric-box-value">
+            <div style="font-size: 0.9rem; margin-bottom: 0.5rem; {% if stats.win_rate | default(0) >= 50 %}color: #4CAF50{% else %}color: #f44336{% endif %}; font-weight: bold;">
+                {{ "%.1f"|format(stats.win_rate | default(0)) }}% Win Rate
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                {{ stats.total | default(0) }} trades ({{ stats.wins | default(0) }}W / {{ stats.losses | default(0) }}L)
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if results['exit_reason_stats'] | default({}) %}
+<h2 style="margin-top: 2rem; margin-bottom: 1rem;">Exit Reason Statistics</h2>
+<div class="metrics-grid">
+    {% for reason, count in results['exit_reason_stats']|dictsort %}
+    <div class="metric-box">
+        <div class="metric-box-label">{{ reason }}</div>
+        <div class="metric-box-value" style="{% if reason|lower == 'tp1' or reason|lower == 'tp2' or reason|lower == 'tp3' %}color: #4CAF50{% elif reason|lower == 'sl' %}color: #f44336{% elif reason|lower == 'breakeven' %}color: #FFA500{% endif %}">
+            {{ count }} {{ "exit" if count == 1 else "exits" }}
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+            {{ "%.1f"|format((count / results['total_trades'] * 100) if results['total_trades'] > 0 else 0) }}% of all trades
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="chart-section" style="margin-top: 2rem;">
+    <h2 style="margin-bottom: 1.5rem;">Equity Curve</h2>
+    <div id="equityChart" class="chart-canvas"></div>
+</div>
+
+</div>
+
+{% if results['parameters'] or results['point_value'] or results['instrument_type'] or results['strategy_setup_params'] %}
+<div style="margin-top: 2rem;margin-bottom: 2rem;">
+    <button id="paramsToggle" onclick="toggleParamsAccordion()" style="width: 100%; padding: 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 0.5rem; cursor: pointer; color: var(--text-primary); font-weight: 600; font-size: 1rem; display: flex; justify-content: space-between; align-items: center;">
+        <span>Backtest Parameters</span>
+        <span id="paramsToggleIcon" style="font-size: 1.2rem; transition: transform 0.3s;">▼</span>
+    </button>
+    <div id="paramsContent" style="display: none; background: var(--bg-secondary); border: 1px solid var(--border-color); border-top: none; padding: 1.5rem; border-radius: 0 0 0.5rem 0.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            {% if results['instrument_type'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Instrument Type</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ results['instrument_type']|capitalize }}</div>
+            </div>
+            {% endif %}
+            {% if results['position_size'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Position Size</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ results['position_size'] }}</div>
+            </div>
+            {% endif %}
+            {% if results['point_value'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Point Value</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ results['point_value'] }}</div>
+            </div>
+            {% endif %}
+            {% if results['tick_size'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Tick Size</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ results['tick_size'] }}</div>
+            </div>
+            {% endif %}
+            {% if results['initial_capital'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Initial Capital</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ "${:,.2f}".format(results['initial_capital']) }}</div>
+            </div>
+            {% endif %}
+            {% if results['commission'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Commission per Trade</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ "${:.2f}".format(results['commission']) if results['commission'] else '0' }}</div>
+            </div>
+            {% endif %}
+            {% if results['slippage_ticks'] %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">Slippage (ticks)</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ results['slippage_ticks'] }}</div>
+            </div>
+            {% endif %}
+            {% for param_name, param_value in (results['parameters'] or {})|items %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">{{ param_name|replace('_', ' ')|title }}</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ param_value }}</div>
+            </div>
+            {% endfor %}
+            {% for param_name, param_value in (results['strategy_setup_params'] or {})|items %}
+            <div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.3rem;">{{ param_name|replace('_', ' ')|title }}</div>
+                <div style="font-weight: 600; color: var(--text-primary);">{{ param_value }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="trades-section">
+    <h2>Trade Log - All {{ results['trades']|length }} Trades</h2>
+    
+    <div style="margin-bottom: 1rem; gap: 1rem;">
+        <div style="display: flex; gap: 0.75rem; flex-wrap: nowrap;flex-direction: row;margin-bottom: 0.75rem;">
+            <select id="filterDirection" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--bg-secondary); color: var(--text-primary);">
+            <option value="">All Directions</option>
+            <option value="LONG">LONG Only</option>
+            <option value="SHORT">SHORT Only</option>
+            </select>
+            <select id="filterExitReason" style="padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--bg-secondary); color: var(--text-primary);">
+            <option value="">All Exits</option>
+            </select>
+        </div>
+        <input type="text" id="searchInput" placeholder="Search trades..." style="flex: 1; min-width: 200px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 0.5rem; background: var(--bg-secondary); color: var(--text-primary);">
+    </div>
+    
+    <div class="table-container">
+        <table id="tradesTable">
+            <thead>
+                <tr>
+                    <th style="cursor: pointer; user-select: none;"># <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Entry Time <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Exit Time <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Direction <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Entry <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Exit <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">Qty <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th style="cursor: pointer; user-select: none;">PnL <span style="font-size: 0.8rem;">⇅</span></th>
+                    <th>Exit Reason</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Trade Viewer Modal -->
+    <div id="tradeViewerModal" class="trade-viewer-modal" style="display: none;">
+        <div class="trade-viewer-content">
+            <div class="trade-viewer-header">
+                <div class="header-left">
+                    <span class="trade-badge" id="viewerTradeBadge">#</span>
+                    <div class="header-info">
+                        <h3 id="viewerTradeTitle">Trade Details</h3>
+                        <span class="trade-subtitle" id="viewerTradeSubtitle"></span>
+                    </div>
+                </div>
+                <button class="close-btn" onclick="closeTradeViewer()">✕</button>
+            </div>
+            <div class="trade-viewer-body">
+                <div class="trade-stats-bar">
+                    <div class="stat-item">
+                        <div class="stat-label">P&L</div>
+                        <div class="stat-value" id="viewerTradePnL"></div>
+                    </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <div class="stat-label">Risk/Reward</div>
+                        <div class="stat-value" id="viewerTradeRR"></div>
+                    </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <div class="stat-label">Duration</div>
+                        <div class="stat-value" id="viewerTradeDuration"></div>
+                    </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <div class="stat-label">Exit Reason</div>
+                        <div class="stat-value" id="viewerTradeExitReason"></div>
+                    </div>
+                </div>
+                <div id="tradeChartContainer" class="trade-chart-container"></div>
+                <div id="tradeScoresContainer" class="trade-chart-container" style="margin-top: 1rem;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div style="color: var(--text-muted);">
+            Showing <span id="showingCount">0</span> of <span id="totalCount">{{ results['trades']|length }}</span> trades
+        </div>
+        <div id="pagination" style="display: flex; gap: 0.5rem;"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if unsaved %}
+<script>
+// Console UI for unsaved runs (fixed at bottom)
+// Inject console container at end of body for unsaved results
+document.addEventListener('DOMContentLoaded', function() {
+    const existing = document.getElementById('consoleContainer');
+    if (!existing) {
+        const container = document.createElement('div');
+        container.id = 'consoleContainer';
+        container.className = 'console-container minimized';
+        container.style.display = 'none';
+        container.innerHTML = `
+            <div class="console-resizer" id="consoleResizer" title="Drag to resize"></div>
+            <div class="console-header">
+                <span class=\"console-title\">
+                    <span class=\"console-icon\">▶</span>
+                    Console Output
+                </span>
+                <button class=\"console-minimize-btn\" id=\"consoleMinimizeBtn\" title=\"Minimize\">−</button>
+            </div>
+            <div class="console-body" id="consoleBody">
+                <div class="console-output" id="consoleOutput"></div>
+            </div>`;
+        document.body.appendChild(container);
+        const minimizeBtn = document.getElementById('consoleMinimizeBtn');
+        minimizeBtn.addEventListener('click', function() {
+            container.style.display = 'none';
+            container.classList.add('minimized');
+        });
+
+        // Resizing logic
+        const resizer = document.getElementById('consoleResizer');
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+        const minHeight = 120; // px
+        const maxHeight = Math.round(window.innerHeight * 0.85);
+
+        function onMouseMove(e) {
+            if (!isResizing) return;
+            const dy = e.clientY - startY;
+            let newHeight = startHeight - dy; // dragging up increases height
+            newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+            container.style.height = newHeight + 'px';
+        }
+
+        function onMouseUp() {
+            isResizing = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            startY = e.clientY;
+            // If height not explicitly set, compute from rendered box
+            startHeight = container.getBoundingClientRect().height;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+    // Restore logs from localStorage and auto-start if needed
+    try {
+        const saved = JSON.parse(localStorage.getItem('consoleLogs_{{ temp_result_id }}') || '[]');
+        const out = document.getElementById('consoleOutput');
+        saved.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'console-line' + (item.kind ? ` ${item.kind}` : '');
+            el.textContent = item.text;
+            out.appendChild(el);
+        });
+        if (out) out.scrollTop = out.scrollHeight;
+    } catch (e) {}
+
+    {% if not has_results %}
+    // Auto-show console for first execution
+    const container = document.getElementById('consoleContainer');
+    if (container) {
+        container.style.display = 'flex';
+        container.classList.remove('minimized');
+    }
+    startLiveStream('execute');
+    {% endif %}
+    
+    // Auto-open console if coming from backtest form
+    try {
+        const autoOpenConsole = localStorage.getItem('autoOpenConsole');
+        if (autoOpenConsole === 'true') {
+            const container = document.getElementById('consoleContainer');
+            if (container) {
+                container.style.display = 'flex';
+                container.classList.remove('minimized');
+            }
+            localStorage.removeItem('autoOpenConsole');
+        }
+    } catch (e) {}
+    
+    // F3 keyboard shortcut for compile
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F3') {
+            e.preventDefault();
+            const rerunBtn = document.getElementById('rerunBtn');
+            if (rerunBtn && !rerunBtn.disabled) {
+                rerunBacktest();
+            }
+        }
+    });
+});
+
+function appendConsole(text, kind) {
+    const out = document.getElementById('consoleOutput');
+    const line = document.createElement('div');
+    line.className = 'console-line' + (kind ? ` ${kind}` : '');
+    line.textContent = text;
+    out.appendChild(line);
+    out.scrollTop = out.scrollHeight;
+    try {
+        const key = 'consoleLogs_{{ temp_result_id }}';
+        const saved = JSON.parse(localStorage.getItem(key) || '[]');
+        saved.push({ text, kind });
+        localStorage.setItem(key, JSON.stringify(saved));
+    } catch (e) {}
+}
+
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 1rem 1.5rem;
+        background: ${type === 'success' ? '#10b981' : '#ef4444'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        font-weight: 600;
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+function toggleConsole() {
+    const container = document.getElementById('consoleContainer');
+    if (container) {
+        if (container.style.display === 'none') {
+            container.style.display = 'flex';
+            container.classList.remove('minimized');
+        } else {
+            container.style.display = 'none';
+            container.classList.add('minimized');
+        }
+    }
+}
+
+async function startLiveStream(mode) {
+    const endpoint = mode === 'execute' ? '/backtest/execute/{{ temp_result_id }}' : '/backtest/rerun/{{ temp_result_id }}';
+    try {
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split('\n\n');
+            buffer = chunks.pop();
+            for (const chunk of chunks) {
+                if (!chunk.startsWith('data: ')) continue;
+                const jsonStr = chunk.substring(6);
+                try {
+                    const evt = JSON.parse(jsonStr);
+                    if (evt.type === 'log') {
+                        appendConsole(evt.message);
+                    } else if (evt.type === 'error') {
+                        appendConsole(`✗ Error: ${evt.message}`, 'console-error');
+                    } else if (evt.type === 'complete') {
+                        appendConsole('✓ Backtest completed. Updating results...', 'console-success');
+                        setTimeout(() => { window.location.reload(); }, 800);
+                    }
+                } catch (e) {}
+            }
+        }
+    } catch (e) {
+        appendConsole(`✗ Stream failed: ${e.message}`, 'console-error');
+    }
+}
+
+async function saveBacktest() {
+    const saveBtn = document.getElementById('saveBtn');
+    const consoleOutput = document.getElementById('consoleOutput');
+    saveBtn.disabled = true;
+    appendConsole('💾 Saving results...');
+    try {
+        const res = await fetch(`/results/save/{{ temp_result_id }}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save');
+        appendConsole('✓ Results saved successfully!', 'console-success');
+        showToast('✓ Results saved successfully!');
+        saveBtn.disabled = false;
+    } catch (e) {
+        appendConsole(`✗ Save failed: ${e.message}`, 'console-error');
+        showToast(`✗ Save failed: ${e.message}`, 'error');
+        saveBtn.disabled = false;
+    }
+}
+
+async function rerunBacktest() {
+    const rerunBtn = document.getElementById('rerunBtn');
+    const consoleOutput = document.getElementById('consoleOutput');
+    const container = document.getElementById('consoleContainer');
+    rerunBtn.disabled = true;
+    // Show console and clear logs
+    container.style.display = 'flex';
+    container.classList.remove('minimized');
+    consoleOutput.innerHTML = '';
+    try { localStorage.removeItem('consoleLogs_{{ temp_result_id }}'); } catch (e) {}
+    appendConsole('🔄 Rerunning backtest...');
+    try {
+        await startLiveStream('rerun');
+    } catch (e) {
+        appendConsole(`✗ Rerun failed: ${e.message}`, 'console-error');
+        rerunBtn.disabled = false;
+    }
+}
+</script>
+{% endif %}
+{% if '/' not in result_id %}
+<script>
+async function deleteBacktest() {
+    try {
+        const res = await fetch('{{ url_for('results.delete_backtest_result', result_id=result_id) }}', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const data = await res.json();
+        
+        if (res.ok && data.success) {
+            window.location.href = '{{ url_for('results.results_page') }}';
+        } else {
+            alert('Failed to delete: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+</script>
+{% endif %}
+
+<script>
+// Description edit/save functions
+function toggleDescriptionEdit() {
+    const display = document.getElementById('descriptionDisplay');
+    const edit = document.getElementById('descriptionEdit');
+    const actionBtns = document.getElementById('descActionBtns');
+    
+    edit.value = display.textContent === 'Click to add description...' ? '' : display.textContent;
+    display.style.display = 'none';
+    edit.style.display = 'block';
+    actionBtns.style.display = 'flex';
+    edit.focus();
+    
+    // Add Enter key listener
+    edit.addEventListener('keydown', handleDescriptionKeydown);
+}
+
+function handleDescriptionKeydown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        saveDescription();
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelDescriptionEdit();
+    }
+}
+
+function cancelDescriptionEdit() {
+    const display = document.getElementById('descriptionDisplay');
+    const edit = document.getElementById('descriptionEdit');
+    const actionBtns = document.getElementById('descActionBtns');
+    
+    // Remove event listener
+    edit.removeEventListener('keydown', handleDescriptionKeydown);
+    
+    display.style.display = 'block';
+    edit.style.display = 'none';
+    actionBtns.style.display = 'none';
+}
+
+async function saveDescription() {
+    const display = document.getElementById('descriptionDisplay');
+    const edit = document.getElementById('descriptionEdit');
+    const description = edit.value.trim() || 'Click to add description...';
+    
+    try {
+        const resultId = '{{ result_id }}';
+        const response = await fetch(`/results/backtest/${resultId}/description`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: description })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            display.textContent = description;
+            if (typeof showToast === 'function') {
+                showToast('✓ Description saved', 'success');
+            }
+            cancelDescriptionEdit();
+        } else {
+            if (typeof showToast === 'function') {
+                showToast(`✗ Error: ${data.error}`, 'error');
+            }
+        }
+    } catch (error) {
+        if (typeof showToast === 'function') {
+            showToast(`✗ Error: ${error.message}`, 'error');
+        }
+    }
+}
+
+function shareResults() {
+    const shareBtn = document.getElementById('shareBtn');
+    if (!shareBtn) return;
+    shareBtn.disabled = true;
+
+    const notify = (msg, type = 'info') => {
+        if (typeof appendConsole === 'function') {
+            appendConsole(msg, type === 'error' ? 'console-error' : undefined);
+        } else {
+            console[type === 'error' ? 'error' : 'log'](msg);
+        }
+        if (typeof showToast === 'function') {
+            showToast(msg, type === 'error' ? 'error' : 'success');
+        } else if (type === 'error') {
+            alert(msg);
+        }
+    };
+
+    notify('📷 Creating snapshot...');
+    (async () => {
+        try {
+            if (!window.html2canvas) {
+                throw new Error('Snapshot tool not loaded');
+            }
+            if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+                throw new Error('Clipboard API unavailable');
+            }
+            const target = document.getElementById('shareSnapshotArea');
+            if (!target) {
+                throw new Error('Nothing to capture');
+            }
+
+            const canvas = await html2canvas(target, {
+                backgroundColor: getComputedStyle(document.body).backgroundColor || '#0f172a',
+                useCORS: true,
+                scale: window.devicePixelRatio || 1
+            });
+
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (!blob) {
+                throw new Error('Failed to generate image');
+            }
+
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            notify('✓ Snapshot copied to clipboard', 'success');
+        } catch (e) {
+            notify(`✗ Share failed: ${e.message}`, 'error');
+        } finally {
+            shareBtn.disabled = false;
+        }
+    })();
+}
+</script>
+
+<script>
+// Trade Table Pagination & Filtering
+const ITEMS_PER_PAGE = 20;
+let allTrades = {{ (results['trades'] or [])|tojson }};
+let currentPage = 1;
+let sortConfig = { column: 0, ascending: true };
+let filterConfig = { search: '', direction: '', exitReason: '' };
+
+function buildExitReasonOptions(trades) {
+    const select = document.getElementById('filterExitReason');
+    if (!select) return;
+    const reasons = new Set();
+    trades.forEach(t => {
+        const reason = (t.exit_reason || '').trim();
+        if (reason) reasons.add(reason);
+    });
+    const sorted = Array.from(reasons).sort((a, b) => a.localeCompare(b));
+    sorted.forEach(reason => {
+        const opt = document.createElement('option');
+        opt.value = reason.toLowerCase();
+        opt.textContent = reason;
+        select.appendChild(opt);
+    });
+}
+
+function formatTrade(trade, index) {
+    const direction = trade.direction == 1 ? 'LONG' : 'SHORT';
+    const pnl = parseFloat(trade.pnl) || 0;
+    const isWin = pnl > 0;
+    return {
+        // index is 1-based for display; source_index preserves the 0-based position for API lookups
+        index: index + 1,
+        source_index: index,
+        entry_time: trade.entry_time || '',
+        exit_time: trade.exit_time || '',
+        direction: direction,
+        entry_price: parseFloat(trade.entry_price) || 0,
+        exit_price: parseFloat(trade.exit_price) || 0,
+        quantity: parseInt(trade.quantity) || 0,
+        pnl: pnl,
+        exit_reason: trade.exit_reason || '',
+        isWin: isWin
+    };
+}
+
+function filterTrades() {
+    let filtered = allTrades.map(formatTrade);
+    
+    // Apply direction filter
+    if (filterConfig.direction) {
+        filtered = filtered.filter(t => t.direction === filterConfig.direction);
+    }
+    
+    // Apply exit reason filter (case-insensitive)
+    if (filterConfig.exitReason) {
+        const target = filterConfig.exitReason.toLowerCase();
+        filtered = filtered.filter(t => {
+            const reason = (t.exit_reason || '').toLowerCase();
+            return reason === target || reason.startsWith(`${target} `);
+        });
+    }
+    
+    // Apply search filter
+    if (filterConfig.search) {
+        const search = filterConfig.search.toLowerCase();
+        filtered = filtered.filter(t => 
+            t.index.toString().includes(search) ||
+            t.entry_time.toLowerCase().includes(search) ||
+            t.exit_time.toLowerCase().includes(search) ||
+            t.direction.toLowerCase().includes(search) ||
+            t.exit_reason.toLowerCase().includes(search)
+        );
+    }
+    
+    return filtered;
+}
+
+function sortTrades(trades) {
+    const columnMap = {
+        0: 'index', 1: 'entry_time', 2: 'exit_time', 3: 'direction', 
+        4: 'entry_price', 5: 'exit_price', 6: 'quantity', 7: 'pnl'
+    };
+    const columnName = columnMap[sortConfig.column];
+    
+    trades.sort((a, b) => {
+        let aVal = a[columnName];
+        let bVal = b[columnName];
+        
+        if (typeof aVal === 'string') {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+        }
+        
+        const result = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+        return sortConfig.ascending ? result : -result;
+    });
+    
+    return trades;
+}
+
+function renderPage(page) {
+    const filtered = filterTrades();
+    const sorted = sortTrades(filtered);
+    const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
+    
+    if (page > totalPages) page = totalPages;
+    if (page < 1) page = 1;
+    currentPage = page;
+    
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    const pageData = sorted.slice(start, end);
+    
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = pageData.map((trade, idx) => `
+        <tr class="trade-row" onclick="openTradeViewer(${JSON.stringify(trade).replace(/"/g, '&quot;')})" style="cursor: pointer;">
+            <td>${trade.index}</td>
+            <td>${trade.entry_time}</td>
+            <td>${trade.exit_time}</td>
+            <td style="color: ${trade.direction === 'LONG' ? '#10B981' : '#EF4444'}; font-weight: 600;">${trade.direction}</td>
+            <td>${trade.entry_price.toFixed(2)}</td>
+            <td>${trade.exit_price.toFixed(2)}</td>
+            <td>${trade.quantity}</td>
+            <td style="color: ${trade.isWin ? '#10B981' : '#EF4444'}; font-weight: 600;">$${trade.pnl.toFixed(2)}</td>
+            <td>${trade.exit_reason}</td>
+        </tr>
+    `).join('');
+    
+    document.getElementById('showingCount').textContent = Math.min(end, sorted.length);
+    
+    renderPagination(totalPages, page);
+}
+
+function renderPagination(totalPages, currentPage) {
+    const paginationDiv = document.getElementById('pagination');
+    let html = '';
+    
+    if (currentPage > 1) {
+        html += `<button onclick="renderPage(${currentPage - 1})" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">← Prev</button>`;
+    }
+    
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+    
+    if (startPage > 1) {
+        html += `<button onclick="renderPage(1)" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">1</button>`;
+        if (startPage > 2) html += '<span style="padding: 0 0.5rem;">...</span>';
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === currentPage) {
+            html += `<button style="padding: 0.5rem 0.75rem; border: 1px solid var(--primary-color); border-radius: 0.25rem; background: var(--primary-color); color: white; cursor: pointer; font-weight: bold;">${i}</button>`;
+        } else {
+            html += `<button onclick="renderPage(${i})" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">${i}</button>`;
+        }
+    }
+    
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += '<span style="padding: 0 0.5rem;">...</span>';
+        html += `<button onclick="renderPage(${totalPages})" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">${totalPages}</button>`;
+    }
+    
+    if (currentPage < totalPages) {
+        html += `<button onclick="renderPage(${currentPage + 1})" style="padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: 0.25rem; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer;">Next →</button>`;
+    }
+    
+    paginationDiv.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Setup filter listeners
+    buildExitReasonOptions(allTrades);
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        filterConfig.search = e.target.value;
+        currentPage = 1;
+        renderPage(1);
+    });
+    
+    document.getElementById('filterDirection').addEventListener('change', (e) => {
+        filterConfig.direction = e.target.value;
+        currentPage = 1;
+        renderPage(1);
+    });
+    
+    document.getElementById('filterExitReason').addEventListener('change', (e) => {
+        filterConfig.exitReason = e.target.value;
+        currentPage = 1;
+        renderPage(1);
+    });
+    
+    // Setup column sorting
+    document.querySelectorAll('#tradesTable thead th').forEach((th, idx) => {
+        if (idx < 8) {  // Only sortable columns (removed PnL% column)
+            th.addEventListener('click', () => {
+                if (sortConfig.column === idx) {
+                    sortConfig.ascending = !sortConfig.ascending;
+                } else {
+                    sortConfig.column = idx;
+                    sortConfig.ascending = true;
+                }
+                currentPage = 1;
+                renderPage(1);
+            });
+        }
+    });
+    
+    // Initial render
+    renderPage(1);
+});
+
+// Trade Viewer Functions
+function openTradeViewer(trade) {
+    // Fetch trade details from backend (includes price window)
+    const resultId = '{{ result_id }}';
+    const tradeIndex = typeof trade.source_index === 'number' ? trade.source_index : Math.max(0, (trade.index || 1) - 1);
+    const displayIndex = trade.index || tradeIndex + 1;
+    
+    // Show loading state
+    const modal = document.getElementById('tradeViewerModal');
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+    
+    const chartContainer = document.getElementById('tradeChartContainer');
+    chartContainer.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);"><div style="font-size: 2rem; margin-bottom: 1rem;">⏳</div>Loading trade data...</div>';
+    
+    // Fetch trade details with price window
+    fetch(`/results/backtest/${resultId}/trade/${tradeIndex}`)
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to load trade data');
+            }
+            
+            const rawTrade = data.trade;
+            const pricesData = data.prices_data || [];
+            const scoresData = data.scores_data || {};
+            const entryRelativeIdx = data.entry_index;
+            const exitRelativeIdx = data.exit_index;
+
+            // Parse direction
+            const direction = rawTrade.direction == 1 ? 'LONG' : 'SHORT';
+            const directionColor = direction === 'LONG' ? '#10B981' : '#EF4444';
+            const pnl = parseFloat(rawTrade.pnl) || 0;
+            const pnlColor = pnl > 0 ? '#10B981' : '#EF4444';
+            
+            // Get SL/TP from trade object directly
+            let stopLossValue = rawTrade.stop_loss;
+            let takeProfits = rawTrade.take_profits && Array.isArray(rawTrade.take_profits) ? rawTrade.take_profits : [];
+            
+            // Fallback to metadata if not on trade object
+            if (!stopLossValue || takeProfits.length === 0) {
+                if (rawTrade.metadata) {
+                    let meta = rawTrade.metadata;
+                    if (typeof meta === 'string') {
+                        try {
+                            meta = JSON.parse(meta);
+                        } catch (e) {
+                            meta = null;
+                        }
+                    }
+                    if (meta) {
+                        if (meta.stop_loss && !stopLossValue) stopLossValue = meta.stop_loss;
+                        if (meta.take_profits && Array.isArray(meta.take_profits) && takeProfits.length === 0) {
+                            takeProfits = meta.take_profits.filter(tp => tp && typeof tp === 'number');
+                        }
+                    }
+                }
+            }
+            
+            // Calculate Risk/Reward
+            let rrText = 'N/A';
+            if (stopLossValue && takeProfits.length > 0) {
+                const entryPrice = parseFloat(rawTrade.entry_price) || 0;
+                const risk = Math.abs(entryPrice - stopLossValue);
+                const reward = Math.abs(takeProfits[0] - entryPrice);
+                if (risk > 0) {
+                    const rr = (reward / risk).toFixed(2);
+                    rrText = `1:${rr}`;
+                }
+            }
+            
+            // Header
+            document.getElementById('viewerTradeBadge').textContent = `#${displayIndex}`;
+            document.getElementById('viewerTradeBadge').style.background = directionColor;
+            document.getElementById('viewerTradeTitle').textContent = `${direction} Trade`;
+            document.getElementById('viewerTradeTitle').style.color = directionColor;
+            document.getElementById('viewerTradeSubtitle').textContent = `Entry: ${rawTrade.entry_time} → Exit: ${rawTrade.exit_time}`;
+            
+            // Calculate trade duration
+            let durationText = 'N/A';
+            const entryTimeParsed = parseTimestamp(rawTrade.entry_time);
+            const exitTimeParsed = parseTimestamp(rawTrade.exit_time);
+            if (entryTimeParsed && exitTimeParsed) {
+                const durationMs = exitTimeParsed - entryTimeParsed;
+                const durationMinutes = Math.round(durationMs / 60000);
+                if (durationMinutes < 60) {
+                    durationText = `${durationMinutes}m`;
+                } else {
+                    const hours = Math.floor(durationMinutes / 60);
+                    const minutes = durationMinutes % 60;
+                    durationText = `${hours}h ${minutes}m`;
+                }
+            }
+            
+            // Stats bar (P&L, RR, Duration, Exit Reason)
+            const entryPrice = parseFloat(rawTrade.entry_price) || 0;
+            const exitPrice = parseFloat(rawTrade.exit_price) || 0;
+            document.getElementById('viewerTradePnL').innerHTML = `<span style="color: ${pnlColor}">$${pnl.toFixed(2)}</span>`;
+            document.getElementById('viewerTradeRR').textContent = rrText;
+            document.getElementById('viewerTradeRR').style.color = rrText !== 'N/A' ? 'var(--text-primary)' : 'var(--text-muted)';
+            document.getElementById('viewerTradeDuration').textContent = durationText;
+            document.getElementById('viewerTradeDuration').style.color = 'var(--text-primary)';
+            document.getElementById('viewerTradeExitReason').textContent = rawTrade.exit_reason;
+            document.getElementById('viewerTradeExitReason').style.color = rawTrade.exit_reason.includes('TP') ? '#10B981' : (rawTrade.exit_reason === 'SL' ? '#EF4444' : 'var(--text-primary)');
+            
+            // Clear loading message before rendering chart
+            chartContainer.innerHTML = '';
+            
+            // Render chart with fetched data
+            renderTradeChart(rawTrade, pricesData, direction, entryRelativeIdx, exitRelativeIdx);
+            
+            // Render scores chart if data available
+            if (Object.keys(scoresData).length > 0) {
+                renderScoresChart(scoresData, pricesData);
+            } else {
+                document.getElementById('tradeScoresContainer').innerHTML = '';
+            }
+        })
+        .catch(error => {
+            console.error('Failed to load trade data:', error);
+            chartContainer.innerHTML = `<div style="padding: 40px; text-align: center; color: #EF4444;"><div style="font-size: 2rem; margin-bottom: 1rem;">✗</div>${error.message}</div>`;
+        });
+}
+
+function closeTradeViewer() {
+    document.getElementById('tradeViewerModal').style.display = 'none';
+    document.body.classList.remove('modal-open');
+    Plotly.purge('tradeChartContainer');
+    Plotly.purge('tradeScoresContainer');
+}
+
+// Close modal when clicking outside the modal-content
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('tradeViewerModal');
+    if (modal) {
+        modal.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeTradeViewer();
+            }
+        });
+    }
+});
+
+let isSyncingCharts = false;
+
+function relayChartRange(sourceId, eventData) {
+    // Sync x-axis ranges between price and scores charts to keep focus aligned
+    const targetId = sourceId === 'tradeChartContainer' ? 'tradeScoresContainer' : 'tradeChartContainer';
+    const targetEl = document.getElementById(targetId);
+    if (!targetEl) return;
+    const r0 = eventData['xaxis.range[0]'];
+    const r1 = eventData['xaxis.range[1]'];
+    if (!r0 || !r1) return;
+    isSyncingCharts = true;
+    Plotly.relayout(targetEl, { 'xaxis.range': [r0, r1] }).finally(() => { isSyncingCharts = false; });
+}
+
+function attachChartSyncHandlers() {
+    const priceEl = document.getElementById('tradeChartContainer');
+    const scoreEl = document.getElementById('tradeScoresContainer');
+    if (priceEl && !priceEl.dataset.syncAttached) {
+        priceEl.on('plotly_relayout', ev => { if (!isSyncingCharts) relayChartRange('tradeChartContainer', ev); });
+        priceEl.dataset.syncAttached = 'true';
+    }
+    if (scoreEl && !scoreEl.dataset.syncAttached) {
+        scoreEl.on('plotly_relayout', ev => { if (!isSyncingCharts) relayChartRange('tradeScoresContainer', ev); });
+        scoreEl.dataset.syncAttached = 'true';
+    }
+}
+
+function renderTradeChart(trade, pricesData, direction, entryRelativeIdx, exitRelativeIdx) {
+    if (!pricesData || pricesData.length === 0) {
+        document.getElementById('tradeChartContainer').innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center;">No price data available</div>';
+        return;
+    }
+    
+    // Determine colors based on trade direction
+    const markerColor = direction === 'LONG' ? '#10B981' : '#EF4444';
+    
+    // chartData is already the price window from backend
+    const chartData = pricesData.map((bar, i) => ({
+        timestamp: bar.timestamp,
+        open: bar.open || bar.close || bar.price,
+        high: bar.high || bar.close || bar.price,
+        low: bar.low || bar.close || bar.price,
+        close: bar.close || bar.price,
+        barIndex: i,
+        parsedTime: parseTimestamp(bar.timestamp) || new Date()
+    }));
+    
+    if (chartData.length === 0) {
+        document.getElementById('tradeChartContainer').innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center;">No price data in chart window</div>';
+        return;
+    }
+    
+    // Extract OHLC for candlestick
+    const opens = chartData.map(d => d.open);
+    const highs = chartData.map(d => d.high);
+    const lows = chartData.map(d => d.low);
+    const closes = chartData.map(d => d.close);
+    const barIndexes = chartData.map(d => d.barIndex);
+    const timeValues = chartData.map(d => d.parsedTime);
+    
+    // Extract only time (HH:MM) for hover labels
+    const timeLabels = chartData.map(d => {
+        const ts = d.timestamp;
+        const timeMatch = ts.match(/(\d{1,2}):(\d{2})/);
+        return timeMatch ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}` : ts;
+    });
+    
+    const hoverLabels = chartData.map((d, i) => `Bar ${d.barIndex}<br>${d.timestamp}`);
+    
+    // Candlestick trace
+    const candleTrace = {
+        x: timeValues,
+        open: opens,
+        high: highs,
+        low: lows,
+        close: closes,
+        type: 'candlestick',
+        name: 'Price',
+        customdata: hoverLabels,
+        hovertemplate: '%{customdata}<br>O: %{open}<br>H: %{high}<br>L: %{low}<br>C: %{close}<extra></extra>',
+        increasing: { line: { color: '#10B981' } },
+        decreasing: { line: { color: '#EF4444' } },
+        showlegend: false
+    };
+    
+    // Entry marker (colored by trade outcome) - use relative index
+    const entryMarker = {
+        x: [timeValues[entryRelativeIdx]],
+        y: [trade.entry_price],
+        mode: 'markers',
+        name: 'Entry',
+        marker: { size: 14, color: markerColor, symbol: 'diamond', line: { width: 2, color: '#ffffff' } },
+        hovertemplate: `Entry<br>Price: ${trade.entry_price.toFixed(2)}<extra></extra>`,
+        showlegend: false
+    };
+    
+    // Exit marker (colored by trade outcome) - use relative index
+    const exitMarker = {
+        x: [timeValues[exitRelativeIdx]],
+        y: [trade.exit_price],
+        mode: 'markers',
+        name: 'Exit',
+        marker: { size: 14, color: markerColor, symbol: 'square', line: { width: 2, color: '#ffffff' } },
+        hovertemplate: `Exit<br>Price: ${trade.exit_price.toFixed(2)}<extra></extra>`,
+        showlegend: false
+    };
+    
+    const traces = [candleTrace, entryMarker, exitMarker];
+    
+    // Stop Loss line - check multiple possible sources
+    const stopLoss = trade.stop_loss || (trade.metadata && typeof trade.metadata === 'object' && trade.metadata.stop_loss);
+    if (stopLoss && typeof stopLoss === 'number') {
+        const slTrace = {
+            x: [timeValues[0], timeValues[timeValues.length - 1]],
+            y: [stopLoss, stopLoss],
+            mode: 'lines',
+            name: 'Stop Loss',
+            line: { color: '#EF4444', dash: 'dash', width: 2 },
+            hovertemplate: `Stop Loss: ${stopLoss.toFixed(2)}<extra></extra>`,
+            showlegend: false
+        };
+        traces.push(slTrace);
+    }
+    
+    // Take Profit lines - check multiple sources
+    let takeProfits = [];
+    
+    // Check if take_profits is directly on trade (preferred)
+    if (trade.take_profits && Array.isArray(trade.take_profits)) {
+        takeProfits = trade.take_profits.filter(tp => tp && typeof tp === 'number');
+    }
+    // Fallback to metadata
+    else if (trade.metadata && trade.metadata.take_profits && Array.isArray(trade.metadata.take_profits)) {
+        takeProfits = trade.metadata.take_profits.filter(tp => tp && typeof tp === 'number');
+    }
+    
+    // Add TP lines
+    if (takeProfits.length > 0) {
+        const tpColors = ['#10B981', '#06B6D4', '#8B5CF6'];
+        takeProfits.forEach((tp, idx) => {
+            const tpTrace = {
+                x: [timeValues[0], timeValues[timeValues.length - 1]],
+                y: [tp, tp],
+                mode: 'lines',
+                name: `TP${idx + 1}`,
+                line: { color: tpColors[idx] || '#10B981', dash: 'dot', width: 2 },
+                hovertemplate: `TP${idx + 1}: ${tp.toFixed(2)}<extra></extra>`,
+                showlegend: false
+            };
+            traces.push(tpTrace);
+        });
+    }
+    
+    const layout = {
+        xaxis: {
+            type: 'date',
+            rangeslider: { visible: false },
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            tickfont: { color: '#ffffff' }
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            tickfont: { color: '#ffffff' },
+            tickformat: '.2f'
+        },
+        plot_bgcolor: 'transparent',
+        paper_bgcolor: 'transparent',
+        font: { family: 'system-ui, -apple-system, sans-serif', size: 12, color: '#ffffff' },
+        hovermode: 'x unified',
+        dragmode: 'pan',
+        autosize: true,
+        margin: { l: 60, r: 20, t: 50, b: 40 },
+        hoverlabel: {
+            bgcolor: 'rgba(30, 41, 59, 0.95)',
+            bordercolor: '#3B82F6',
+            font: { color: '#ffffff', size: 13, family: 'monospace' },
+            namelength: -1
+        }
+    };
+    
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        toImageButtonOptions: {
+            format: 'png',
+            filename: `trade_${trade.index}_chart.png`,
+            height: 600,
+            width: 1000,
+            scale: 1
+        }
+    };
+    
+    Plotly.newPlot('tradeChartContainer', traces, layout, config).then(attachChartSyncHandlers);
+    
+    // Add click-hold tooltip toggle
+    const chartDiv = document.getElementById('tradeChartContainer');
+    chartDiv.classList.add('click-hover-only');
+    
+    chartDiv.addEventListener('mousedown', function(e) {
+        chartDiv.classList.remove('click-hover-only');
+    });
+    
+    chartDiv.addEventListener('mouseup', function(e) {
+        chartDiv.classList.add('click-hover-only');
+    });
+    
+    chartDiv.addEventListener('mouseleave', function(e) {
+        chartDiv.classList.add('click-hover-only');
+    });
+    
+    // Add double-click to fullscreen handler
+    chartDiv.addEventListener('dblclick', function(e) {
+        if (!document.fullscreenElement) {
+            chartDiv.requestFullscreen().catch(err => {
+                console.error('Failed to enter fullscreen:', err);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    });
+}
+
+const SCORE_COLORS = {
+    '1m': '#F2CD5C',
+    '5m': '#F2921D',
+    '15m': '#D946A6',
+    '60m': '#A61F69'
+};
+
+const SCORE_WIDTHS = {
+    '1m': 1.7,
+    '5m': 2.5,
+    '15m': 3.5,
+    '60m': 5
+};
+
+function renderScoresChart(scoresData, pricesData) {
+    const container = document.getElementById('tradeScoresContainer');
+    
+    if (!scoresData || Object.keys(scoresData).length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    // Force crosshair cursor for the container
+    container.style.cursor = 'crosshair';
+    
+    // Create timestamp index for prices (Date objects)
+    const priceTimestamps = pricesData.map(bar => parseTimestamp(bar.timestamp));
+
+    // Build traces for each timeframe
+    const traces = [];
+    const timeframeConfig = {
+        '1m': { color: SCORE_COLORS['1m'], width: SCORE_WIDTHS['1m'], name: '1m' },
+        '5m': { color: SCORE_COLORS['5m'], width: SCORE_WIDTHS['5m'], name: '5m' },
+        '15m': { color: SCORE_COLORS['15m'], width: SCORE_WIDTHS['15m'], name: '15m' },
+        '60m': { color: SCORE_COLORS['60m'], width: SCORE_WIDTHS['60m'], name: '60m' }
+    };
+    
+    Object.keys(timeframeConfig).forEach(timeframe => {
+        if (scoresData[timeframe] && scoresData[timeframe].length > 0) {
+            const scores = scoresData[timeframe];
+            const config = timeframeConfig[timeframe];
+            
+            // Sort scores by time
+            scores.sort((a, b) => parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp));
+            
+            // Forward fill scores to match price timeline
+            const xData = [];
+            const yData = [];
+            
+            let lastScore = null;
+            let scoreIdx = 0;
+            
+            priceTimestamps.forEach(pt => {
+                if (!pt) return;
+                
+                // Advance scoreIdx to find the latest score <= pt
+                while (scoreIdx < scores.length) {
+                    const st = parseTimestamp(scores[scoreIdx].timestamp);
+                    if (st && st <= pt) {
+                        lastScore = scores[scoreIdx].score;
+                        scoreIdx++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // If we have a score, add it
+                if (lastScore !== null) {
+                    xData.push(pt);
+                    yData.push(lastScore);
+                }
+            });
+            
+            if (xData.length > 0) {
+                traces.push({
+                    x: xData,
+                    y: yData,
+                    mode: 'lines',
+                    name: config.name,
+                    line: {
+                        color: config.color,
+                        width: config.width,
+                        shape: 'hv' // Step line for clearer state changes
+                    },
+                    hovertemplate: `%{y:.2f}<extra></extra>`
+                });
+            }
+        }
+    });
+    
+    if (traces.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center;">No scores data available</div>';
+        return;
+    }
+    
+    const layout = {
+        title: {
+            text: 'Scores Timeline',
+            font: { color: '#ffffff', size: 14 }
+        },
+        xaxis: {
+            type: 'date',
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            tickfont: { color: '#ffffff' },
+            spikethickness: 1,
+            showspikes: true,
+            spikemode: 'across',
+            spikecolor: 'rgba(255, 255, 255, 0.2)'
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            tickfont: { color: '#ffffff' },
+            range: [-100, 100],
+            autorange: false,
+            fixedrange: true
+        },
+        plot_bgcolor: 'transparent',
+        paper_bgcolor: 'transparent',
+        font: { family: 'system-ui, -apple-system, sans-serif', size: 12, color: '#ffffff' },
+        hovermode: 'x unified',
+        dragmode: false,
+        autosize: true,
+        margin: { l: 60, r: 20, t: 50, b: 40 },
+        height: 250,
+        showlegend: true,
+        legend: {
+            orientation: 'h',
+            x: 0.5,
+            xanchor: 'center',
+            y: 1.15,
+            font: { color: '#ffffff' }
+        },
+        shapes: [
+            {
+                type: 'line',
+                xref: 'paper',
+                x0: 0,
+                x1: 1,
+                y0: 0,
+                y1: 0,
+                line: {
+                    color: 'rgba(255, 255, 255, 0.65)',
+                    width: 1.5,
+                    dash: 'dash'
+                }
+            }
+        ],
+        hoverlabel: {
+            bgcolor: 'rgba(30, 41, 59, 0.95)',
+            bordercolor: '#3B82F6',
+            font: { color: '#ffffff', size: 13, family: 'monospace' },
+            namelength: -1
+        }
+    };
+    
+    const config = {
+        responsive: true,
+        displayModeBar: false,
+        displaylogo: false
+    };
+    
+    Plotly.newPlot('tradeScoresContainer', traces, layout, config).then(attachChartSyncHandlers);
+}
+
+// Toggle parameters accordion
+function toggleParamsAccordion() {
+    const content = document.getElementById('paramsContent');
+    const icon = document.getElementById('paramsToggleIcon');
+    const isHidden = content.style.display === 'none';
+    
+    if (isHidden) {
+        content.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        content.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+// Parse timestamp in multiple formats
+function parseTimestamp(tsStr) {
+    if (!tsStr) return null;
+    const match1 = tsStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+    if (match1) return new Date(match1[3], match1[2] - 1, match1[1], match1[4], match1[5], match1[6]);
+    const match2 = tsStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+    if (match2) return new Date(match2[1], match2[2] - 1, match2[3], match2[4], match2[5], match2[6]);
+
+    const match3 = tsStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{1,2}):(\d{2}):(\d{2})/);
+    if (match3) return new Date(match3[1], match3[2] - 1, match3[3], match3[4], match3[5], match3[6]);
+    return null;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const equityCurve = {{ (results['equity_curve'] or [])|tojson }};
+    const trades = {{ (results['trades'] or [])|tojson }};
+    const initialCapital = {{ results['initial_capital'] or 100000 }};
+    
+    if (!equityCurve || equityCurve.length === 0) {
+        document.getElementById('equityChart').innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center;">No chart data available</div>';
+        return;
+    }
+    
+    // Find trade date range
+    let firstTradeTime = null;
+    let lastTradeTime = null;
+    if (trades && trades.length > 0) {
+        const times = trades
+            .map(t => parseTimestamp(t.entry_time || t.timestamp))
+            .filter(t => t !== null);
+        if (times.length > 0) {
+            times.sort((a, b) => a - b);
+            firstTradeTime = times[0];
+            lastTradeTime = times[times.length - 1];
+            const exitTimes = trades
+                .map(t => parseTimestamp(t.exit_time))
+                .filter(t => t !== null);
+            if (exitTimes.length > 0) {
+                exitTimes.sort((a, b) => a - b);
+                lastTradeTime = exitTimes[exitTimes.length - 1];
+            }
+        }
+    }
+    
+    // Filter equity to trade range
+    let filteredEquity = equityCurve;
+    if (firstTradeTime && lastTradeTime) {
+        filteredEquity = equityCurve.filter(item => {
+            const itemTime = parseTimestamp(item.timestamp);
+            return itemTime && itemTime >= firstTradeTime && itemTime <= lastTradeTime;
+        });
+    }
+    
+    if (filteredEquity.length === 0) {
+        filteredEquity = equityCurve;
+    }
+    
+    // Downsample if too many points
+    const maxPoints = 1000;
+    let displayEquity = filteredEquity;
+    if (filteredEquity.length > maxPoints) {
+        const step = Math.ceil(filteredEquity.length / maxPoints);
+        displayEquity = [];
+        for (let i = 0; i < filteredEquity.length; i += step) {
+            displayEquity.push(filteredEquity[i]);
+        }
+    }
+    
+    // Helper function to format numbers as shorthand (50.4k, 1.2m, etc.)
+    function formatShorthand(num) {
+        if (Math.abs(num) >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'm';
+        } else if (Math.abs(num) >= 1000) {
+            return (num / 1000).toFixed(1) + 'k';
+        }
+        return num.toFixed(0);
+    }
+    
+    // Extract data (x-axis is trade number instead of timestamp)
+    const equities = displayEquity.map(e => e.equity);
+    const equitiesFormatted = equities.map(e => formatShorthand(e));
+    const timestamps = displayEquity.map(e => e.timestamp || '');
+    const finalEquity = equities[equities.length - 1] || initialCapital;
+    const returnValue = ((finalEquity - initialCapital) / initialCapital) * 100;
+    const minEquity = Math.min(...equities);
+    const maxEquity = Math.max(...equities);
+    const span = Math.max(1, maxEquity - minEquity);
+    const pad = span * 0.05;
+    const yRange = [minEquity - pad, maxEquity + pad];
+    
+    // Trade index for every equity point
+    const tradeNumbers = Array.from({length: displayEquity.length}, (_, i) => i + 1);
+    
+    const equityTrace = {
+        x: tradeNumbers,
+        y: equities,
+        name: 'Equity',
+        type: 'scatter',
+        mode: 'lines',
+        line: {
+            color: returnValue >= 0 ? '#10B981' : '#EF4444',
+            width: 2.5
+        },
+        fill: 'tozeroy',
+        fillcolor: returnValue >= 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+        customdata: tradeNumbers.map((n, idx) => [timestamps[idx], equitiesFormatted[idx]]),
+        hovertemplate: 'Trade %{x}<br>%{customdata[0]}<br>$%{customdata[1]}<extra></extra>',
+        showlegend: false
+    };
+    
+    const referenceTrace = {
+        x: tradeNumbers,
+        y: Array(tradeNumbers.length).fill(initialCapital),
+        name: 'Initial Capital',
+        type: 'scatter',
+        mode: 'lines',
+        line: {
+            color: '#9CA3AF',
+            width: 1.5,
+            dash: 'dash'
+        },
+        hoverinfo: 'skip',
+        showlegend: false
+    };
+
+    // All-time high markers up to each trade (blue small dots)
+    let highMarkersTrace = null;
+    if (equities && equities.length > 0) {
+        const xHighs = [];
+        const yHighs = [];
+        let runningMax = -Infinity;
+        for (let i = 0; i < equities.length; i++) {
+            const val = equities[i];
+            if (val > runningMax) {
+                xHighs.push(tradeNumbers[i]);
+                yHighs.push(val);
+                runningMax = val;
+            }
+        }
+        if (xHighs.length > 0) {
+            highMarkersTrace = {
+                x: xHighs,
+                y: yHighs,
+                type: 'scatter',
+                mode: 'markers',
+                marker: { size: 5, color: '#f5378e' },
+                name: 'Equity Highs',
+                hovertemplate: 'New High<br>Trade %{x}<br>$%{y:.0f}<extra></extra>',
+                showlegend: false
+            };
+        }
+    }
+    
+    const layout = {
+        title: {
+            text: '',
+            font: {
+                color: '#ffffff'
+            }
+        },
+        margin: { l: 60, r: 20, t: 20, b: 50 },
+        hovermode: 'closest',
+        plot_bgcolor: 'transparent',
+        paper_bgcolor: 'transparent',
+        dragmode: false,
+        font: {
+            family: 'system-ui, -apple-system, sans-serif',
+            size: 12,
+            color: '#ffffff'
+        },
+        hoverlabel: {
+            bgcolor: 'rgba(15, 23, 42, 0.9)',
+            bordercolor: 'var(--border-color)',
+            font: { color: '#fff', size: 12 }
+        },
+        xaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            zeroline: false,
+            tickfont: { color: '#ffffff' },
+            title: {
+                text: 'Trade #',
+                font: { color: '#ffffff' }
+            },
+            type: 'linear'
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            zeroline: false,
+            title: {
+                text: '',
+                font: {
+                    color: '#ffffff'
+                }
+            },
+            tickfont: { color: '#ffffff' },
+            tickformat: '$,.0f',
+            range: yRange,
+            fixedrange: false
+        }
+    };
+    
+    const config = {
+        responsive: true,
+        displayModeBar: false,
+        displaylogo: false,
+        toImageButtonOptions: {
+            format: 'png',
+            filename: 'equity_curve.png',
+            height: 600,
+            width: 1000,
+            scale: 1
+        }
+    };
+    
+    const equityTraces = highMarkersTrace ? [equityTrace, referenceTrace, highMarkersTrace] : [equityTrace, referenceTrace];
+    Plotly.newPlot('equityChart', equityTraces, layout, config);
+    
+    // Add crosshair cursor and disable double-click zoom
+    const equityChartDiv = document.getElementById('equityChart');
+    equityChartDiv.style.cursor = 'crosshair';
+    equityChartDiv.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        return false;
+    }, true);
+    
+    // Resize on window resize
+    window.addEventListener('resize', function() {
+        Plotly.Plots.resize('equityChart');
+    });
+});
+</script>
+{% endblock %}
+

@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+
+{% block title %}Optimize - Backtesting System{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/backtest.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- Page Header with Breadcrumbs -->
+
+
+<div class="backtest-form-container">
+    <form id="optimizeForm" class="backtest-form">
+        <!-- STEP 1: Data & Strategy Section -->
+        <div class="form-card accordion-card">
+            <div class="card-header accordion-header" data-accordion="step-1">
+                <div class="step-badge">1</div>
+                <div class="accordion-title">
+                    <h2 class="card-title">Data & Strategy</h2>
+                    <p class="card-subtitle">Select your data file and trading strategy</p>
+                </div>
+                <div class="accordion-icon">⌄</div>
+            </div>
+            <div class="card-content accordion-content" id="step-1">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dataFile" class="form-label-required">
+                            <span>Data File</span>
+                        </label>
+                        <select id="dataFile" class="form-input form-select" required>
+                            {% for file in data_files %}
+                            <option value="{{ file }}">{{ file }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-hint">CSV file containing OHLCV data</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="strategy" class="form-label-required">
+                            <span>Strategy</span>
+                        </label>
+                        <select id="strategy" class="form-input form-select" required onchange="loadStrategyParams()">
+                            {% for strategy in strategies %}
+                            <option value="{{ strategy }}">{{ strategy }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-hint">Choose which strategy to optimize</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group form-group-full">
+                        <label for="scoresFile" class="form-label">
+                            <span>Score Database</span>
+                            <span class="optional-badge">(Optional)</span>
+                        </label>
+                        <select id="scoresFile" class="form-input form-select">
+                            <option value="">None</option>
+                            {% for file in score_files %}
+                            <option value="{{ file }}">{{ file }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-hint">Optional external indicators or sentiment data</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: Parameter Ranges Section -->
+        <div class="form-card accordion-card" id="paramsCard" style="display:none;">
+            <div class="card-header accordion-header" data-accordion="step-2">
+                <div class="step-badge">2</div>
+                <div class="accordion-title">
+                    <h2 class="card-title">Parameter Ranges</h2>
+                    <p class="card-subtitle">Define optimization ranges for each parameter</p>
+                </div>
+                <div class="accordion-icon">⌄</div>
+            </div>
+            <div class="card-content accordion-content" id="step-2">
+                <div id="parameterInputs"></div>
+            </div>
+        </div>
+
+        <!-- STEP 3: Optimization Settings Section -->
+        <div class="form-card accordion-card">
+            <div class="card-header accordion-header" data-accordion="step-3">
+                <div class="step-badge">3</div>
+                <div class="accordion-title">
+                    <h2 class="card-title">Optimization Settings</h2>
+                    <p class="card-subtitle">Configure optimization parameters and constraints</p>
+                </div>
+                <div class="accordion-icon">⌄</div>
+            </div>
+            <div class="card-content accordion-content" id="step-3">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="metric" class="form-label-required">
+                            <span>Optimization Metric</span>
+                        </label>
+                        <select id="metric" class="form-input form-select">
+                            <option value="total_return" selected>Total Return</option>
+                            <option value="sharpe_ratio">Sharpe Ratio</option>
+                            <option value="profit_factor">Profit Factor</option>
+                            <option value="win_rate">Win Rate</option>
+                        </select>
+                        <span class="field-hint">Metric to maximize during optimization</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="topN" class="form-label-required">
+                            <span>Top Results to Save</span>
+                        </label>
+                        <input type="number" id="topN" class="form-input" value="10" min="1" max="100" required>
+                        <span class="field-hint">Number of best parameter sets to keep</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="initialCapital" class="form-label-required">
+                            <span>Initial Capital</span>
+                            <span class="currency-badge">$</span>
+                        </label>
+                        <input type="number" id="initialCapital" class="form-input" value="50000" step="1000" required>
+                        <span class="field-hint">Starting account balance</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="maxWorkers" class="form-label-required">
+                            <span>Parallel Workers</span>
+                        </label>
+                        <input type="number" id="maxWorkers" class="form-input" value="4" min="1" max="16" required>
+                        <span class="field-hint">Concurrent optimization tasks</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 4: Instrument Specifications Section -->
+        <div class="form-card accordion-card">
+            <div class="card-header accordion-header" data-accordion="step-4">
+                <div class="step-badge">4</div>
+                <div class="accordion-title">
+                    <h2 class="card-title">Instrument Specifications</h2>
+                    <p class="card-subtitle">Define instrument properties for accurate P&L</p>
+                </div>
+                <div class="accordion-icon">⌄</div>
+            </div>
+            <div class="card-content accordion-content" id="step-4">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="instrumentType" class="form-label-required">
+                            <span>Instrument Type</span>
+                        </label>
+                        <select id="instrumentType" class="form-input form-select" required>
+                            <option value="stock">Stock (Dollar-based)</option>
+                            <option value="futures" selected>Futures (Point-based)</option>
+                        </select>
+                        <span class="field-hint">Affects P&L calculation method</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pointValue" class="form-label-required">
+                            <span>Point Value</span>
+                            <span class="currency-badge">$</span>
+                        </label>
+                        <input type="number" id="pointValue" class="form-input" value="2" step="0.01" required>
+                        <span class="field-hint">$ earned per 1-point move</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="tickSize" class="form-label-required">
+                            <span>Tick Size</span>
+                        </label>
+                        <input type="number" id="tickSize" class="form-input" value="0.25" step="0.01" required>
+                        <span class="field-hint">Minimum price increment</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Primary CTA and Feedback -->
+        <div class="form-actions-sticky">
+            <button type="submit" class="btn btn-primary btn-large btn-backtest-submit" id="submitBtn">
+                <span class="btn-icon">⚡</span>
+                <span class="btn-text">Start Optimization</span>
+            </button>
+        </div>
+    </form>
+
+    <!-- Status Messages and Progress -->
+    <div id="resultMessage" class="message" style="display:none;"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let strategyParams = {};
+
+// ============= ACCORDION FUNCTIONALITY =============
+function initializeAccordions() {
+    const accordionHeaders = document.querySelectorAll('.accordion-header');
+    
+    // Collapse all except the first one
+    accordionHeaders.forEach((header, index) => {
+        const card = header.closest('.accordion-card');
+        if (index !== 0) {
+            card.classList.add('collapsed');
+        }
+    });
+    
+    // Add click handlers (always open the clicked one)
+    accordionHeaders.forEach(header => {
+        header.setAttribute('role', 'button');
+        header.setAttribute('tabindex', '0');
+        header.addEventListener('click', function() {
+            const clickedCard = this.closest('.accordion-card');
+            // Close all
+            document.querySelectorAll('.accordion-card').forEach(card => card.classList.add('collapsed'));
+            // Open clicked
+            clickedCard.classList.remove('collapsed');
+        });
+        header.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const clickedCard = this.closest('.accordion-card');
+                document.querySelectorAll('.accordion-card').forEach(card => card.classList.add('collapsed'));
+                clickedCard.classList.remove('collapsed');
+            }
+        });
+    });
+}
+
+// ============= AUTO-SELECT FIRST OPTIONS =============
+function autoSelectFirstOptions() {
+    // Auto-select first strategy
+    const strategySelect = document.getElementById('strategy');
+    if (strategySelect && strategySelect.options.length > 0) {
+        strategySelect.selectedIndex = 0;
+        // Load strategy params automatically
+        loadStrategyParams();
+    }
+    
+    // Auto-select first data file
+    const dataSelect = document.getElementById('dataFile');
+    if (dataSelect && dataSelect.options.length > 0) {
+        dataSelect.selectedIndex = 0;
+    }
+    
+    // Auto-select first score database (skip "None" option)
+    const scoreSelect = document.getElementById('scoresFile');
+    if (scoreSelect && scoreSelect.options.length > 1) {
+        scoreSelect.selectedIndex = 1;
+    }
+}
+
+// ============= STRATEGY PARAMETER LOADING =============
+async function loadStrategyParams() {
+    const strategy = document.getElementById('strategy').value;
+    if (!strategy) return;
+    
+    try {
+        const response = await fetch(`/optimize/get_params/${strategy}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            strategyParams = data.parameters;
+            renderParameterInputs();
+            validateForm();
+        } else {
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+}
+
+// ============= PARAMETER INPUTS RENDERING =============
+function renderParameterInputs() {
+    const container = document.getElementById('parameterInputs');
+    container.innerHTML = '';
+    
+    const paramsGrid = document.createElement('div');
+    paramsGrid.style.display = 'grid';
+    paramsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
+    paramsGrid.style.gap = 'var(--space-md)';
+    
+    for (const [param, range] of Object.entries(strategyParams)) {
+        const [min, max, step] = range;
+        
+        const paramDiv = document.createElement('div');
+        paramDiv.className = 'param-input-group';
+        paramDiv.style.padding = 'var(--space-md)';
+        paramDiv.style.background = 'var(--bg-secondary)';
+        paramDiv.style.border = '1px solid var(--border-color)';
+        paramDiv.style.borderRadius = 'var(--radius-md)';
+        
+        paramDiv.innerHTML = `
+            <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <input type="checkbox" id="${param}_checkbox" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary);">
+                <label for="${param}_checkbox" style="margin: 0; cursor: pointer; font-weight: 600; flex: 1; color: var(--text-primary);">
+                    ${param}
+                </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-sm);">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Min</label>
+                    <input type="number" id="${param}_min" class="form-input" value="${min}" step="${step}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Max</label>
+                    <input type="number" id="${param}_max" class="form-input" value="${max}" step="${step}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 0.75rem;">Step</label>
+                    <input type="number" id="${param}_step" class="form-input" value="${step}" step="${step/10}">
+                </div>
+            </div>
+        `;
+        paramsGrid.appendChild(paramDiv);
+    }
+    
+    container.appendChild(paramsGrid);
+    document.getElementById('paramsCard').style.display = 'block';
+    
+    // Auto-check the first parameter so the form can be submitted
+    const firstCheckbox = document.querySelector('[id$="_checkbox"]');
+    if (firstCheckbox) {
+        firstCheckbox.checked = true;
+    }
+    
+    // Reinitialize accordions to include the new parameter section
+    initializeAccordions();
+    
+    // Trigger form validation to update button state
+    validateForm();
+}
+
+// ============= FORM VALIDATION =============
+function validateForm() {
+    const form = document.getElementById('optimizeForm');
+    const isValid = form.checkValidity();
+    const submitBtn = document.getElementById('submitBtn');
+    
+    // Also check if at least one parameter is selected (if params section exists)
+    let hasParameters = true;
+    if (document.getElementById('paramsCard').style.display !== 'none') {
+        const checkboxes = document.querySelectorAll('[id$="_checkbox"]');
+        hasParameters = Array.from(checkboxes).some(cb => cb.checked);
+    }
+    
+    submitBtn.disabled = !isValid || !hasParameters;
+}
+
+// ============= FORM SUBMISSION =============
+document.getElementById('optimizeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const messageDiv = document.getElementById('resultMessage');
+    
+    submitBtn.disabled = true;
+    
+    // Collect parameter ranges (only for checked parameters)
+    const paramRanges = {};
+    for (const param of Object.keys(strategyParams)) {
+        const checkbox = document.getElementById(`${param}_checkbox`);
+        if (checkbox && checkbox.checked) {
+            const min = parseFloat(document.getElementById(`${param}_min`).value);
+            const max = parseFloat(document.getElementById(`${param}_max`).value);
+            const step = parseFloat(document.getElementById(`${param}_step`).value);
+            paramRanges[param] = [min, max, step];
+        }
+    }
+    
+    // Check if at least one parameter is selected
+    if (Object.keys(paramRanges).length === 0) {
+        messageDiv.textContent = '✗ Please select at least one parameter to optimize';
+        messageDiv.className = 'message message-error';
+        messageDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        return;
+    }
+    
+    const config = {
+        data_file: document.getElementById('dataFile').value,
+        strategy: document.getElementById('strategy').value,
+        param_ranges: paramRanges,
+        metric: document.getElementById('metric').value,
+        top_n: parseInt(document.getElementById('topN').value),
+        initial_capital: parseFloat(document.getElementById('initialCapital').value),
+        max_workers: parseInt(document.getElementById('maxWorkers').value),
+        commission: 0,
+        slippage_ticks: 0,
+        instrument_type: document.getElementById('instrumentType').value,
+
+        point_value: parseFloat(document.getElementById('pointValue').value),
+        tick_size: parseFloat(document.getElementById('tickSize').value),
+        scores_file: document.getElementById('scoresFile').value || null
+    };
+    
+    messageDiv.textContent = '⏳ Queueing optimization job...';
+    messageDiv.className = 'message message-info';
+    messageDiv.style.display = 'block';
+    
+    try {
+        const response = await fetch('/optimize/run', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            window.location.href = `/`;
+        } else {
+            messageDiv.textContent = `✗ Error: ${data.error}`;
+            messageDiv.className = 'message message-error';
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        messageDiv.textContent = `✗ Error: ${error.message}`;
+        messageDiv.className = 'message message-error';
+        submitBtn.disabled = false;
+    }
+});
+
+// ============= FORM LISTENERS =============
+document.getElementById('dataFile').addEventListener('change', validateForm);
+document.getElementById('strategy').addEventListener('change', loadStrategyParams);
+document.getElementById('metric').addEventListener('change', validateForm);
+document.getElementById('topN').addEventListener('change', validateForm);
+document.getElementById('initialCapital').addEventListener('change', validateForm);
+document.getElementById('maxWorkers').addEventListener('change', validateForm);
+document.getElementById('instrumentType').addEventListener('change', validateForm);
+
+document.getElementById('pointValue').addEventListener('change', validateForm);
+document.getElementById('tickSize').addEventListener('change', validateForm);
+
+// ============= INITIALIZATION =============
+document.addEventListener('DOMContentLoaded', function() {
+    autoSelectFirstOptions();
+    initializeAccordions();
+    validateForm();
+});
+</script>
+{% endblock %}

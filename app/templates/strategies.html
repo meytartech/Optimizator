@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Strategies - Backtesting System{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/strategies.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Strategy Management</h1>
+    <a href="/strategies/template" class="btn btn-primary">Create Template</a>
+</div>
+
+<div class="section-card data-list">
+        <div class="list-header">
+            <h2>Available Strategies</h2>
+        </div>
+        {% if strategies %}
+        <div class="table-container compact-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Strategy Name</th>
+                        <th>Filename</th>
+                        <th>Last Modified</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for strategy in strategies %}
+                    <tr>
+                        <td><strong>{{ strategy.name }}</strong></td>
+                        <td>{{ strategy.filename }}</td>
+                        <td>{{ strategy.modified }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-message">No strategies found. Upload your first strategy above!</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% endblock %}

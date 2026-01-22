@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Backtesting System{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/results.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Results</h1>
+</div>
+
+<div class="results-grid">
+    <!-- Backtests Panel -->
+    <div class="section-card results-panel" style="grid-column: 1 / -1;">
+        <div class="list-header">
+            <div>
+                <h2>Backtests</h2>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button id="compare-btn" class="btn btn-primary" style="display:none;">Compare Selected</button>
+                <button id="bt-refresh" class="btn btn-secondary">↻ Refresh</button>
+                <button id="bt-load-more" class="btn btn-primary" style="display:none;">Load More</button>
+            </div>
+        </div>
+        <div class="table-container compact-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all-bt"></th>
+                        <th>Date</th>
+                        <th>Strategy</th>
+                        <th>Win Rate</th>
+                        <th>Avg RR</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="backtests-body"></tbody>
+            </table>
+            <div id="backtests-empty" class="empty-message" style="display:none;">No backtest results yet. Run your first backtest!</div>
+        </div>
+    </div>
+
+    <!-- Optimizations Panel -->
+    <div class="section-card results-panel" style="grid-column: 1 / -1;">
+        <div class="list-header">
+            <div>
+                <h2>Optimizations</h2>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button id="opt-refresh" class="btn btn-secondary">↻ Refresh</button>
+                <button id="opt-load-more" class="btn btn-primary" style="display:none;">Load More</button>
+            </div>
+        </div>
+        <div class="table-container compact-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Strategy</th>
+                        <th>Combinations</th>
+                        <th>Best Return</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="optimizations-body"></tbody>
+            </table>
+            <div id="optimizations-empty" class="empty-message" style="display:none;">No optimization results yet. Run your first optimization!</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const PAGE_SIZE = 20;
+let btOffset = 0;
+let optOffset = 0;
+let runningJobs = {};
+let jobStatuses = {};
+let jobPollTimer = null;
+
+function formatPct(val) {
+    const n = Number(val || 0);
+    return `${n.toFixed(2)}%`;
+}
+
+function makeCell(text, className) {
+    const td = document.createElement('td');
+    if (className) td.className = className;
+    td.textContent = text;
+    return td;
+}
+
+function makeActionCell(viewUrl) {
+    const td = document.createElement('td');
+    const view = document.createElement('a');
+    view.href = viewUrl;
+    view.className = 'btn btn-small btn-info';
+    view.textContent = 'View';
+    td.appendChild(view);
+    return td;
+}
+
+function appendBacktests(rows) {
+    const btBody = document.getElementById('backtests-body');
+    rows.forEach(bt => {
+        const tr = document.createElement('tr');
+        
+        // Checkbox cell
+        const checkTd = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'bt-checkbox';
+        checkbox.dataset.btId = bt.id;
+        checkbox.addEventListener('change', updateCompareButton);
+        checkTd.appendChild(checkbox);
+        tr.appendChild(checkTd);
+        
+        tr.appendChild(makeCell(formatDate(bt.date)));
+        
+        // Strategy cell with optional description tooltip
+        const strategyCell = document.createElement('td');
+        strategyCell.textContent = bt.strategy;
+        if (bt.description && bt.description.trim()) {
+            const infoIcon = document.createElement('span');
+            infoIcon.textContent = ' ℹ';
+            infoIcon.className = 'info-icon';
+            infoIcon.title = bt.description;
+            infoIcon.style.cursor = 'help';
+            infoIcon.style.color = '#6c757d';
+            infoIcon.style.fontSize = '0.9em';
+            strategyCell.appendChild(infoIcon);
+        }
+        tr.appendChild(strategyCell);
+        const winRate = Number(bt.win_rate || 0);
+        const avgRR = Number(bt.avg_rr || 0);
+        const isGood = avgRR > 1 && winRate > 50;
+        
+        const winRateCell = makeCell(`${winRate.toFixed(2)}%`, isGood ? 'metric-positive' : '');
+        tr.appendChild(winRateCell);
+        
+        const rrCell = makeCell(avgRR.toFixed(2), isGood ? 'metric-positive' : '');
+        tr.appendChild(rrCell);
+        
+        const viewUrl = '{{ url_for('results.view_backtest_result', result_id='__ID__') }}'.replace('__ID__', bt.id);
+        tr.appendChild(makeActionCell(viewUrl));
+        btBody.appendChild(tr);
+    });
+}
+
+function appendOptimizations(rows) {
+    const optBody = document.getElementById('optimizations-body');
+    rows.forEach(opt => {
+        const tr = document.createElement('tr');
+        tr.appendChild(makeCell(formatDate(opt.date)));
+        tr.appendChild(makeCell(opt.strategy));
+        tr.appendChild(makeCell(opt.combinations));
+        const cls = (opt.best_return || 0) > 0 ? 'positive' : 'negative';
+        tr.appendChild(makeCell(formatPct(opt.best_return), cls));
+        const viewUrl = '{{ url_for('results.view_optimization_result', result_id='__ID__') }}'.replace('__ID__', opt.id);
+        tr.appendChild(makeActionCell(viewUrl));
+        optBody.appendChild(tr);
+    });
+}
+
+function showLoadingRow(tbodyId, colspan, text) {
+    const body = document.getElementById(tbodyId);
+    if (!body) return;
+    const tr = document.createElement('tr');
+    tr.className = 'loading-row';
+    const td = document.createElement('td');
+    td.colSpan = colspan;
+    td.style.textAlign = 'center';
+    td.style.padding = '1rem';
+    td.innerHTML = `<div class="table-inline-loader"><span class="spinner mini"></span><span>${text}</span></div>`;
+    body.appendChild(tr);
+}
+
+function clearJobRows() {
+    document.querySelectorAll('.job-row').forEach(el => el.remove());
+}
+
+function renderJobRows() {
+    clearJobRows();
+    const jobs = Object.values(runningJobs);
+    if (!jobs.length) return;
+    const btBody = document.getElementById('backtests-body');
+    const optBody = document.getElementById('optimizations-body');
+    jobs.forEach(job => {
+        const tr = document.createElement('tr');
+        tr.className = 'job-row';
+        const td = document.createElement('td');
+        td.colSpan = job.job_type === 'optimization' ? 5 : 5;
+        const progress = job.progress ?? 0;
+        td.innerHTML = `
+            <div class="job-inline">
+                <span class="spinner mini"></span>
+                <div>
+                    <div class="job-inline-title">${job.strategy_name}</div>
+                    <div class="job-inline-sub">${job.job_type.toUpperCase()} · ${job.status.toUpperCase()} · ${progress}%</div>
+                </div>
+            </div>
+        `;
+        tr.appendChild(td);
+        if (job.job_type === 'backtest') {
+            btBody.prepend(tr);
+            document.getElementById('backtests-empty').style.display = 'none';
+        } else {
+            optBody.prepend(tr);
+            document.getElementById('optimizations-empty').style.display = 'none';
+        }
+    });
+}
+
+async function loadBacktests(reset = false) {
+    const btEmpty = document.getElementById('backtests-empty');
+    const btLoadMore = document.getElementById('bt-load-more');
+    const btBody = document.getElementById('backtests-body');
+
+    if (reset) {
+        btOffset = 0;
+        btBody.innerHTML = '';
+        btEmpty.style.display = 'none';
+        showLoadingRow('backtests-body', 5, 'Loading backtests…');
+    }
+
+    try {
+        const res = await fetch(`{{ url_for('results.api_results') }}?limit=${PAGE_SIZE}&bt_offset=${btOffset}&only=backtests`);
+        const data = await res.json();
+        const rows = data.backtests || [];
+        if (reset) btBody.innerHTML = '';
+        if (rows.length === 0 && btOffset === 0 && !Object.values(runningJobs).some(j => j.job_type === 'backtest')) {
+            btEmpty.style.display = 'block';
+        } else {
+            appendBacktests(rows);
+            btOffset += rows.length;
+            btEmpty.style.display = 'none';
+        }
+        btLoadMore.style.display = rows.length === PAGE_SIZE ? 'inline-flex' : 'none';
+    } catch (e) {
+        console.error('Failed to load backtests', e);
+    } finally {
+        renderJobRows();
+    }
+}
+
+async function loadOptimizations(reset = false) {
+    const optEmpty = document.getElementById('optimizations-empty');
+    const optLoadMore = document.getElementById('opt-load-more');
+    const optBody = document.getElementById('optimizations-body');
+
+    if (reset) {
+        optOffset = 0;
+        optBody.innerHTML = '';
+        optEmpty.style.display = 'none';
+        showLoadingRow('optimizations-body', 5, 'Loading optimizations…');
+    }
+
+    try {
+        const res = await fetch(`{{ url_for('results.api_results') }}?limit=${PAGE_SIZE}&opt_offset=${optOffset}&only=optimizations`);
+        const data = await res.json();
+        const rows = data.optimizations || [];
+        if (reset) optBody.innerHTML = '';
+        if (rows.length === 0 && optOffset === 0 && !Object.values(runningJobs).some(j => j.job_type === 'optimization')) {
+            optEmpty.style.display = 'block';
+        } else {
+            appendOptimizations(rows);
+            optOffset += rows.length;
+            optEmpty.style.display = 'none';
+        }
+        optLoadMore.style.display = rows.length === PAGE_SIZE ? 'inline-flex' : 'none';
+    } catch (e) {
+        console.error('Failed to load optimizations', e);
+    } finally {
+        renderJobRows();
+    }
+}
+
+async function loadMoreBacktests() {
+    const btn = document.getElementById('bt-load-more');
+    btn.disabled = true;
+    await loadBacktests(false);
+    btn.disabled = false;
+}
+
+async function loadMoreOptimizations() {
+    const btn = document.getElementById('opt-load-more');
+    btn.disabled = true;
+    await loadOptimizations(false);
+    btn.disabled = false;
+}
+
+async function refreshBacktests() {
+    await loadBacktests(true);
+}
+
+async function refreshOptimizations() {
+    await loadOptimizations(true);
+}
+
+function handleJobList(jobs) {
+    const active = jobs.filter(j => ['queued', 'running'].includes(j.status));
+    const completedNow = jobs.filter(j => ['completed', 'failed', 'cancelled'].includes(j.status) && jobStatuses[j.job_id] && jobStatuses[j.job_id] !== j.status);
+
+    runningJobs = Object.fromEntries(active.map(j => [j.job_id, j]));
+    jobs.forEach(j => jobStatuses[j.job_id] = j.status);
+
+    if (completedNow.some(j => j.job_type === 'backtest')) {
+        loadBacktests(true);
+    }
+    if (completedNow.some(j => j.job_type === 'optimization')) {
+        loadOptimizations(true);
+    }
+    renderJobRows();
+}
+
+async function pollJobs() {
+    try {
+        const res = await fetch('/api/jobs');
+        if (res.ok) {
+            const jobs = await res.json();
+            handleJobList(jobs || []);
+        }
+    } catch (e) {
+        console.error('Failed to poll jobs', e);
+    } finally {
+        jobPollTimer = setTimeout(pollJobs, 2000);
+    }
+}
+
+function updateCompareButton() {
+    const checkboxes = document.querySelectorAll('.bt-checkbox:checked');
+    const compareBtn = document.getElementById('compare-btn');
+    compareBtn.style.display = checkboxes.length >= 2 ? 'inline-flex' : 'none';
+}
+
+function compareSelected() {
+    const checkboxes = document.querySelectorAll('.bt-checkbox:checked');
+    const ids = Array.from(checkboxes).map(cb => cb.dataset.btId);
+    if (ids.length < 2) {
+        alert('Please select at least 2 backtests to compare');
+        return;
+    }
+    window.location.href = '{{ url_for('results.compare_backtests') }}?ids=' + ids.join(',');
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('select-all-bt');
+    const checkboxes = document.querySelectorAll('.bt-checkbox');
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+    updateCompareButton();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadBacktests(true);
+    loadOptimizations(true);
+    pollJobs();
+    document.getElementById('bt-load-more').addEventListener('click', loadMoreBacktests);
+    document.getElementById('opt-load-more').addEventListener('click', loadMoreOptimizations);
+    document.getElementById('bt-refresh').addEventListener('click', refreshBacktests);
+    document.getElementById('opt-refresh').addEventListener('click', refreshOptimizations);
+    document.getElementById('compare-btn').addEventListener('click', compareSelected);
+    document.getElementById('select-all-bt').addEventListener('change', toggleSelectAll);
+});
+
+function formatDate(dateStr) {
+    try {
+        const s = String(dateStr || '').replace(/\D/g, '');
+        if (s.length >= 14) {
+            const day = s.slice(6,8);
+            const month = s.slice(4,6);
+            const year = s.slice(2,4);
+            const hour = s.slice(8,10);
+            const minute = s.slice(10,12);
+            return `${day}/${month}/${year} ${hour}:${minute}`;
+        }
+        if (s.length === 12) {
+            const day = s.slice(6,8);
+            const month = s.slice(4,6);
+            const year = s.slice(2,4);
+            const hour = s.slice(8,10);
+            const minute = s.slice(10,12);
+            return `${day}/${month}/${year} ${hour}:${minute}`;
+        }
+        if (s.length === 8) {
+            const day = s.slice(6,8);
+            const month = s.slice(4,6);
+            const year = s.slice(2,4);
+            return `${day}/${month}/${year}`;
+        }
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+            const pad = (n) => String(n).padStart(2, '0');
+            const year = String(d.getFullYear()).slice(2);
+            return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${year} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+        return dateStr;
+    } catch {
+        return dateStr;
+    }
+}
+</script>
+{% endblock %}

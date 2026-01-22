@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Create Strategy Template{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/template.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>🚀 Create Strategy Template</h1>
+        <p>Generate a new strategy file with custom parameters</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+        <!-- Form Section -->
+        <div>
+            <div class="card">
+                <h2>Strategy Configuration</h2>
+                
+                <form id="templateForm">
+                    <div class="form-group">
+                        <label>Strategy Name *</label>
+                        <input type="text" id="strategyName" placeholder="e.g., Moving Average Crossover" required>
+                        <small>Used for class name and file name</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="strategyDescription" placeholder="Describe your strategy logic" style="min-height: 80px;"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <h3 style="color: var(--primary); margin-top: 1.5rem;">Strategy Parameters</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.9rem;">Add parameters that your strategy will use and optimize</p>
+                        
+                        <div id="parametersList" style="margin-top: 1rem;">
+                            <!-- Parameters will be added here -->
+                        </div>
+
+                        <button type="button" class="btn btn-secondary" onclick="addParameter()" style="width: 100%; margin-top: 1rem;">
+                            ➕ Add Parameter
+                        </button>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 2rem;">
+                        Generate Template
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Preview Section -->
+        <div>
+            <div class="card">
+                <h2>Preview</h2>
+                <div id="preview" style="background: #1a2332; padding: 1rem; border-radius: 4px; overflow-y: auto; max-height: 600px; font-family: monospace; font-size: 0.85rem; color: #90caf9;">
+                    <p style="color: #9e9e9e;">Template preview will appear here...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.param-item {
+    background: var(--bg-tertiary);
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.param-item input {
+    margin-bottom: 0.5rem;
+    width: 100%;
+    padding: 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 3px;
+}
+
+.param-item button {
+    background: var(--danger);
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.param-item button:hover {
+    background: var(--danger-dark);
+}
+
+.param-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr auto;
+    gap: 0.5rem;
+    align-items: end;
+}
+
+@media (max-width: 1200px) {
+    .param-row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script>
+let paramCount = 0;
+
+function toSnakeCase(value) {
+    return (value || '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_]/g, '')
+        .toLowerCase();
+}
+
+function addParameter() {
+    const id = paramCount++;
+    const html = `
+        <div class="param-item" id="param-${id}">
+            <div class="param-row">
+                <div>
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Parameter Name</label>
+                    <input type="text" class="param-name" placeholder="e.g., fast_period" required>
+                </div>
+                <div>
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Min Value</label>
+                    <input type="number" class="param-min" value="5" required>
+                </div>
+                <div>
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Max Value</label>
+                    <input type="number" class="param-max" value="50" required>
+                </div>
+                <div>
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Step Size</label>
+                    <input type="number" class="param-step" value="5" required>
+                </div>
+                <button type="button" onclick="removeParameter(${id})">Remove</button>
+            </div>
+        </div>
+    `;
+    document.getElementById('parametersList').insertAdjacentHTML('beforeend', html);
+    
+    // Add event listeners for real-time preview updates
+    const paramItem = document.getElementById(`param-${id}`);
+    paramItem.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', updatePreview);
+    });
+    
+    updatePreview();
+}
+
+function removeParameter(id) {
+    const elem = document.getElementById(`param-${id}`);
+    if (elem) {
+        elem.remove();
+        updatePreview();
+    }
+}
+
+function updatePreview() {
+    const name = document.getElementById('strategyName').value || 'MyStrategy';
+    const desc = document.getElementById('strategyDescription').value || 'Strategy description';
+    
+    const params = [];
+    document.querySelectorAll('.param-item').forEach(item => {
+        const paramName = toSnakeCase(item.querySelector('.param-name').value);
+        if (paramName) {
+            params.push({
+                name: paramName,
+                min: item.querySelector('.param-min').value,
+                max: item.querySelector('.param-max').value,
+                step: item.querySelector('.param-step').value
+            });
+        }
+    });
+    
+    const className = name.toLowerCase().replace(/\s+/g, '_')
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join('');
+    
+    const fileName = toSnakeCase(name) || 'my_strategy';
+    
+    // Build parameter initialization
+    let paramInit = '';
+    if (params.length === 0) {
+        paramInit = '        # No tunable parameters yet\n        pass';
+    } else {
+        paramInit = params.map(p => `        self.${p.name} = self.params.get('${p.name}', ${p.min})`).join('\n');
+    }
+    
+    // Build parameter ranges
+    let paramRanges = '';
+    if (params.length === 0) {
+        paramRanges = '        return {}';
+    } else {
+        paramRanges = '        return {\n' + 
+            params.map(p => `            '${p.name}': (${p.min}, ${p.max}, ${p.step})`).join(',\n') +
+            '\n        }';
+    }
+    
+    const preview = `"""
+Strategy Template: ${name}
+
+Description: ${desc}
+"""
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from core.base_strategy import BaseStrategy, TradeSignal
+
+
+class ${className}(BaseStrategy):
+    """${name} Strategy
+    
+    ${desc}
+    """
+    
+    def setup(self):
+        """Initialize strategy parameters."""
+        # Allowed trading sessions: NY, EU, ASIA (comma-separated string or list)
+        self.allowed_sessions = ['NY',  'ASIA']
+${paramInit}
+    
+    def is_allowed_session(self, timestamp_str: str) -> bool:
+        """Check if timestamp falls within allowed trading sessions.
+        
+        Session hours (no timezone conversion):
+        - Asia: 1-10
+        - Europe: 10-16
+        - New York: 16-24
+        
+        Returns True if current hour is within any allowed session.
+        """
+        try:
+            # Parse timestamp - normalize commas to spaces first
+            time_str = str(timestamp_str).replace(',', ' ')
+            
+            dt = None
+            for fmt in ['%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                try:
+                    dt = datetime.strptime(time_str, fmt)
+                    break
+                except:
+                    continue
+            
+            if not dt:
+                return True  # Fail-safe: allow if cannot parse
+            
+            hour = dt.hour
+            
+            # Classify by session
+            session_name = None
+            if 1 <= hour < 10:
+                session_name = 'ASIA'
+            elif 10 <= hour < 16:
+                session_name = 'EU'
+            elif 16 <= hour < 24:
+                session_name = 'NY'
+            else:
+                # Hour 0 doesn't fit any session
+                return False
+            
+            # Check if this session is allowed
+            allowed_sessions = self.params.get('allowed_sessions', ['NY', 'EU', 'ASIA'])
+            if isinstance(allowed_sessions, str):
+                allowed_sessions = [s.strip().upper() for s in allowed_sessions.split(',')]
+            
+            return session_name in allowed_sessions
+        except Exception:
+            # If parsing fails, allow the trade (fail-safe)
+            return True
+    
+    def generate_signal(self, prices_data: List[Dict[str, Any]], 
+                       scores_data: Optional[List[Dict[str, Any]]] = None) -> List[TradeSignal]:
+        """Generate trading signals for the full period.
+        
+        Args:
+            prices_data: List of price bars with timestamp + OHLC/price
+            scores_data: Optional score/indicator data from database
+        """
+        signals: List[TradeSignal] = []
+        history: List[Dict[str, Any]] = []
+        
+        for bar in prices_data:
+            history.append(bar)
+            timestamp = bar.get("timestamp", "")
+            price = bar.get("close", bar.get("price"))
+            
+            if price is None:
+                signals.append(TradeSignal(signal=0, entry_price=0.0, timestamp=timestamp))
+                continue
+            
+            # Check if current time is within allowed sessions
+            if not self.is_allowed_session(timestamp):
+                signals.append(TradeSignal(signal=0, entry_price=price, timestamp=timestamp))
+                continue
+            
+            # Warmup period
+            if len(history) < 5:
+                signals.append(TradeSignal(signal=0, entry_price=price, timestamp=timestamp))
+                continue
+            
+            # TODO: Implement your strategy logic here
+            # Example: matched_score = next((s for s in scores_data or [] 
+            #                                if s.get("timestamp") == timestamp), None)
+            
+            signals.append(TradeSignal(signal=0, entry_price=price, timestamp=timestamp))
+        
+        return signals
+    
+    def get_parameter_ranges(self) -> Dict[str, Tuple[float, float, float]]:
+        """Define parameters for optimization (min, max, step)."""
+${paramRanges}
+`;
+    
+    document.getElementById('preview').textContent = preview;
+}
+
+document.getElementById('templateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('strategyName').value;
+    if (!name) {
+        alert('Please enter a strategy name');
+        return;
+    }
+    
+    const parameters = [];
+    document.querySelectorAll('.param-item').forEach(item => {
+        const paramName = toSnakeCase(item.querySelector('.param-name').value);
+        if (!paramName) {
+            return;
+        }
+        parameters.push({
+            name: paramName,
+            min: parseFloat(item.querySelector('.param-min').value),
+            max: parseFloat(item.querySelector('.param-max').value),
+            step: parseFloat(item.querySelector('.param-step').value),
+            default: parseFloat(item.querySelector('.param-min').value)
+        });
+    });
+    
+    try {
+        const response = await fetch('/strategies/generate-template', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: name,
+                description: document.getElementById('strategyDescription').value,
+                parameters: parameters
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // Show success message
+            const message = document.createElement('div');
+            message.className = 'alert alert-success';
+            message.style.position = 'fixed';
+            message.style.top = '100px';
+            message.style.right = '20px';
+            message.style.zIndex = '1000';
+            message.textContent = `✓ Template "${name}" created! File: ${result.filename}`;
+            document.body.appendChild(message);
+            
+            setTimeout(() => message.remove(), 5000);
+            
+            // Reset form
+            document.getElementById('templateForm').reset();
+            document.getElementById('parametersList').innerHTML = '';
+            paramCount = 0;
+            updatePreview();
+        } else {
+            alert(`Error: ${result.error}`);
+        }
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+});
+
+// Add one parameter by default
+addParameter();
+
+// Add event listeners for form fields
+document.getElementById('strategyName').addEventListener('input', updatePreview);
+document.getElementById('strategyDescription').addEventListener('input', updatePreview);
+
+// Initial preview update
+updatePreview();
+</script>
+{% endblock %}

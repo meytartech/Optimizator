@@ -1,0 +1,615 @@
+/* Results & Optimization Pages Styles */
+
+/* Hide Plotly hover tooltips by default - only show on click-and-hold */
+.click-hover-only .hoverlayer {
+    display: none !important;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-lg);
+}
+
+.header-main {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.header-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    color: var(--accent);
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: var(--space-xl);
+    align-items: start;
+    margin-bottom: var(--space-xl);
+}
+
+.panels-grid .section-card {
+    height: 100%;
+}
+
+.result-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.result-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary);
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: var(--space-md);
+}
+
+.result-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.result-date {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.result-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+    margin: var(--space-md) 0;
+}
+
+.mini-metric {
+    text-align: center;
+    padding: var(--space-sm);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+}
+
+.mini-metric-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: var(--space-xs);
+}
+
+.mini-metric-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.optimization-progress {
+    margin: var(--space-md) 0;
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.combinations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: var(--space-md);
+}
+
+.combination-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+}
+
+.combination-rank {
+    display: inline-block;
+    background: var(--primary);
+    color: white;
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.875rem;
+    margin-bottom: var(--space-md);
+}
+
+.combination-params {
+    margin: var(--space-md) 0;
+}
+
+.param-line {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-xs) 0;
+    font-size: 0.875rem;
+}
+
+.param-line-label {
+    color: var(--text-muted);
+}
+
+.param-line-value {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.combination-score {
+    text-align: center;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.score-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: var(--space-xs);
+}
+
+.score-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--success);
+}
+
+
+.list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-md);
+}
+
+.subtext {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.compact-table table th,
+.compact-table table td {
+    padding: var(--space-sm) var(--space-md);
+}
+
+.tall-table {
+    max-height: 70vh;
+}
+
+.detail-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-xl);
+}
+
+.detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-lg);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.detail-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.detail-subtitle {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-lg);
+    margin-bottom: var(--space-xl);
+}
+
+.metric-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    text-align: center;
+    align-content: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.metric-box:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+}
+
+.metric-box-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.metric-box-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.metric-box-value.positive {
+    color: #4CAF50;
+}
+
+.metric-box-value.negative {
+    color: #f44336;
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-2xl);
+    color: var(--text-muted);
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: var(--space-md);
+    opacity: 0.5;
+}
+
+.empty-state-text {
+    font-size: 1.125rem;
+    margin-bottom: var(--space-md);
+}
+
+/* Backtest detail: chart and table */
+.chart-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-xl);
+    min-height: 420px;
+    overflow: hidden; /* keep plot inside the card */
+}
+
+.chart-section .chart-canvas {
+    width: 100%;
+    height: 380px;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+}
+
+.trades-section .table-container {
+    max-height: 50vh; /* limit vertical size */
+    overflow-y: auto;
+}
+
+.trades-section table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.trades-section thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    z-index: 1;
+}
+
+/* Table Loader */
+.table-loader {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-md);
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.spinner.mini {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+.table-inline-loader {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.job-row td {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.job-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.job-inline-title {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.job-inline-sub {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.loading-row td {
+    background: var(--bg-secondary);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+/* Trade Viewer Modal Styles */
+.trade-viewer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 2rem;
+}
+
+body.modal-open {
+    overflow: hidden;
+}
+
+.trade-viewer-content {
+    background: #1e293b;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    width: 65%;
+    max-width: 1600px;
+    height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.trade-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.75rem;
+    border-bottom: 2px solid var(--border-color);
+    background: linear-gradient(to bottom, var(--bg-secondary), var(--bg-primary));
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.trade-badge {
+    background: var(--primary-color);
+    color: white;
+    font-weight: 700;
+    font-size: 1rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: 6px;
+    min-width: 60px;
+    text-align: center;
+}
+
+.header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.trade-viewer-header h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.trade-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.close-btn {
+    background: rgba(148, 163, 184, 0.1);
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-weight: 300;
+}
+
+.close-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #EF4444;
+}
+
+.trade-viewer-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.trade-stats-bar {
+    display: flex;
+    padding: 1.25rem 1.75rem;
+    gap: 1.5rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    min-width: 120px;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.stat-value {
+    font-size: 1.125rem;
+    color: var(--text-primary);
+    font-weight: 700;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.stat-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.stat-divider {
+    width: 1px;
+    background: var(--border-color);
+    margin: 0.25rem 0;
+}
+
+.trade-chart-container {
+    flex: 1;
+    background: transparent;
+    overflow: hidden;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* Trade row hover effect */
+.trade-row {
+    cursor: pointer;
+}
+
+.trade-row:hover {
+    background-color: rgba(148, 163, 184, 0.15);
+}
+
+/* Trade table header styling */
+#tradesTable thead {
+    background-color: rgba(148, 163, 184, 0.15);
+    border-bottom: 2px solid var(--border-color);
+}
+
+#tradesTable thead th {
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 0.75rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .trade-stats-bar {
+        overflow-x: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .trade-viewer-modal {
+        padding: 0.5rem;
+    }
+    
+    .trade-viewer-content {
+        width: 100%;
+        height: 95vh;
+        border-radius: 8px;
+    }
+    
+    .trade-viewer-header {
+        padding: 1rem;
+    }
+    
+    .trade-viewer-header h3 {
+        font-size: 1rem;
+    }
+    
+    .trade-badge {
+        font-size: 0.875rem;
+        padding: 0.375rem 0.625rem;
+        min-width: 50px;
+    }
+    
+    .close-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 1.25rem;
+    }
+    
+    .trade-stats-bar {
+        padding: 1rem;
+        gap: 1rem;
+    }
+    
+    .stat-item {
+        min-width: 100px;
+    }
+    
+    .trade-chart-container {
+        padding: 0.5rem;
+    }
+}

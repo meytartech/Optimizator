@@ -1,0 +1,337 @@
+/* Backtest Comparison Styles */
+
+@import 'theme.css';
+
+.comparison-container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.comparison-table-wrapper {
+    overflow-x: auto;
+    margin-top: var(--space-md);
+}
+
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.comparison-table thead {
+    background: var(--bg-secondary);
+}
+
+.comparison-table th,
+.comparison-table td {
+    padding: var(--space-sm) var(--space-md);
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.comparison-table th.metric-label,
+.comparison-table td.metric-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    min-width: 180px;
+}
+
+.comparison-table th.backtest-column {
+    text-align: center;
+    min-width: 150px;
+}
+
+.backtest-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.backtest-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.backtest-date {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.comparison-table td.metric-value {
+    text-align: center;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.comparison-table td.metric-value.positive {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.comparison-table td.metric-value.negative {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.comparison-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.comparison-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Equity Curves Grid */
+.equity-curves-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: var(--space-xl);
+    margin-top: var(--space-md);
+}
+
+.equity-curve-item {
+    background: var(--bg-secondary);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.equity-curve-item h3 {
+    margin: 0 0 var(--space-xs) 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.equity-date {
+    margin: 0 0 var(--space-sm) 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.equity-curve-img {
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+    background: white;
+    padding: var(--space-sm);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.equity-curve-img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.no-equity {
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border: 2px dashed var(--border-color);
+}
+
+/* View Links */
+.view-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+}
+
+.view-links .btn {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* Section Card */
+.section-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.section-card h2 {
+    margin: 0 0 var(--space-md) 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: var(--space-sm);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .comparison-table th.metric-label,
+    .comparison-table td.metric-label {
+        position: static;
+        min-width: auto;
+    }
+    
+    .equity-curves-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .view-links {
+        flex-direction: column;
+    }
+    
+    .view-links .btn {
+        min-width: auto;
+    }
+}
+
+/* Highlight best value in each row */
+.comparison-table tbody tr:hover td.metric-label {
+    background: var(--bg-hover);
+}
+
+/* Better scrollbar for comparison table */
+.comparison-table-wrapper::-webkit-scrollbar {
+    height: 8px;
+}
+
+.comparison-table-wrapper::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.comparison-table-wrapper::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-sm);
+}
+
+.comparison-table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Image Modal */
+.image-modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    overflow: auto;
+    cursor: zoom-out;
+}
+
+.modal-content {
+    margin: auto;
+    display: block;
+    max-width: 95%;
+    max-height: 90vh;
+    object-fit: contain;
+    animation: zoom 0.3s;
+    border-radius: var(--radius-md);
+}
+
+@keyframes zoom {
+    from {transform: scale(0.8); opacity: 0;}
+    to {transform: scale(1); opacity: 1;}
+}
+
+.modal-close {
+    position: absolute;
+    top: 20px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    transition: 0.3s;
+    cursor: pointer;
+}
+
+.modal-close:hover,
+.modal-close:focus {
+    color: #bbb;
+}
+
+.modal-caption {
+    margin: auto;
+    display: block;
+    width: 80%;
+    max-width: 700px;
+    text-align: center;
+    color: #ccc;
+    padding: 20px;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+/* Accordion Styles */
+.accordion-section h2.accordion-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+    margin-bottom: 0;
+    padding-bottom: var(--space-sm);
+}
+
+.accordion-section h2.accordion-header:hover {
+    color: var(--primary);
+}
+
+.accordion-icon {
+    font-size: 0.9rem;
+    transition: transform 0.3s ease;
+    color: var(--text-muted);
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.accordion-content.active {
+    max-height: 5000px;
+    transition: max-height 0.5s ease-in;
+    padding-top: var(--space-md);
+}
+
+.accordion-section .comparison-table-wrapper,
+.accordion-section .equity-curves-grid {
+    margin-top: 0;
+}
+
+/* Make non-accordion sections consistent */
+.section-card:not(.accordion-section) h2 {
+    cursor: default;
+}
+
+/* Compact grid spacing */
+.equity-curves-grid {
+    gap: var(--space-md);
+    margin-top: var(--space-sm);
+}
+
+.comparison-table-wrapper {
+    margin-top: var(--space-sm);
+}
+
+/* Reduce view links spacing */
+.view-links {
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.view-links .btn {
+    padding: var(--space-sm) var(--space-md);
+}

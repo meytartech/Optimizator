@@ -1,0 +1,1135 @@
+{% extends "base.html" %}
+
+{% block title %}Optimization Results - {{ display_title or result_id }}{% endblock %}
+
+{% set best_run = top_runs[0] if top_runs|length > 0 else None %}
+{% set opt_metric = results.optimization_metric %}
+{% set is_opt_percent = opt_metric in ['total_return', 'win_rate'] %}
+
+{% block page_css %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 1400px; margin: 0 auto; padding: 0 2rem;">
+
+<!-- Page Header -->
+<div class="page-header" style="margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div class="header-main">
+        <div>
+            <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">{{ display_title or 'Optimization Results' }}</h1>
+        </div>
+    </div>
+    <div class="header-actions">
+        <button onclick="deleteOptimization()" class="btn btn-danger">Delete</button>
+    </div>
+</div>
+
+
+<!-- Summary KPI Cards (3-column) -->
+<section style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <div class="card" style="text-align: center; padding: 2rem; background: var(--gradient-primary);" title="The total profit/loss percentage from the best parameter combination">
+        <p style="color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Best Total Return</p>
+        <div style="font-size: 2.5rem; font-weight: 700; color: white; margin-bottom: 0.25rem;">{{ (results.best_metrics.total_return|float)|round(2) }}%</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 2rem; background: var(--gradient-success);" title="Risk-adjusted return metric: higher values indicate better performance per unit of risk">
+        <p style="color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Best Sharpe Ratio</p>
+        <div style="font-size: 2.5rem; font-weight: 700; color: white; margin-bottom: 0.25rem;">{{ '%.2f'|format(results.best_metrics.sharpe_ratio|float) }}</div>
+    </div>
+    <div class="card" style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);" title="Percentage of trades that closed with a profit">
+        <p style="color: rgba(255,255,255,0.8); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Best Win Rate</p>
+        <div style="font-size: 2.5rem; font-weight: 700; color: white; margin-bottom: 0.25rem;">{{ (results.best_metrics.win_rate|float)|round(2) }}%</div>
+    </div>
+</section>
+
+
+<!-- Top Runs Table with Sticky Header -->
+<section class="card" style="margin-bottom: 2.5rem;">
+    <div class="section-header" style="margin-bottom: 1.5rem;">
+        <div>
+            <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Top Performers</p>
+            <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary);">Best {{ top_runs|length }} Backtests</h3>
+        </div>
+    </div>
+    <div class="table-container" style="max-height: 600px; overflow-y: auto; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+        <table id="topRunsTable" class="results-table" style="width: 100%; border-collapse: collapse;">
+            <thead style="position: sticky; top: 0; background: var(--bg-secondary); z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                <tr>
+                    <th data-sort="number" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Rank</th>
+                    <th data-sort="string" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Params</th>
+                    <th data-sort="number" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Trades</th>
+                    <th data-sort="number" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Win Rate</th>
+                    <th data-sort="number" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Avg R/R</th>
+                    <th data-sort="number" class="sortable" style="padding: 1rem; text-align: left; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">{{ results.optimization_metric|replace('_',' ')|title }}</th>
+                    <th style="padding: 1rem; text-align: center; font-weight: 600; color: var(--text-secondary); font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid var(--border-color);">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in top_runs|sort(attribute='rank') %}
+                <tr style="transition: background 0.15s ease;" onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
+                    <td data-sort="{{ run.rank }}" style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); font-weight: 600; color: var(--primary);">#{{ run.rank }}</td>
+                    <td data-sort='{{ run.parameters|tojson }}' style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); color: var(--text-primary);">
+                        <button class="btn btn-small btn-secondary" onclick="window.openParamsTooltip(this)" data-params='{{ run.parameters|tojson }}' aria-haspopup="true" aria-expanded="false">View Params</button>
+                    </td>
+                    <td data-sort="{{ run.metrics.total_trades if run.metrics.total_trades is defined else 0 }}" style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); color: var(--text-primary);">{{ run.metrics.total_trades if run.metrics.total_trades is defined else '-' }}</td>
+                    <td data-sort="{% if run.metrics.win_rate is defined %}{{ (run.metrics.win_rate|float) }}{% else %}0{% endif %}" style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); font-weight: 600; color: {% if run.metrics.win_rate and run.metrics.win_rate|float > 0 %}var(--success){% else %}var(--error){% endif %};">
+                        {% if run.metrics.win_rate is defined %}{{ (run.metrics.win_rate|float)|round(2) }}%{% else %}-{% endif %}
+                    </td>
+                    <td data-sort="{{ run.metrics.avg_rr|default(0, true) }}" style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); color: var(--text-primary);">{{ '%.2f'|format(run.metrics.avg_rr|float) if run.metrics.avg_rr is defined else '-' }}</td>
+                    {% set metric_val = run.metrics.get(opt_metric) if run.metrics is defined else None %}
+                    <td data-sort="{% if metric_val is not none %}{% if is_opt_percent %}{{ (metric_val) }}{% else %}{{ metric_val|float }}{% endif %}{% else %}0{% endif %}" style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); font-weight: 600; color: {% if metric_val and metric_val|float > 0 %}var(--success){% else %}var(--error){% endif %};">
+                        {% if metric_val is not none %}
+                            {% if is_opt_percent %}{{ (metric_val)|round(2) }}%{% else %}{{ '%.4f'|format(metric_val|float) }}{% endif %}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td style="padding: 0.875rem 1rem; border-bottom: 1px solid var(--border-color); text-align: center;">
+                        <a class="btn btn-small" href="{{ run.url }}" onclick="event.stopPropagation();" style="padding: 0.5rem 1rem; background: var(--primary); color: white; text-decoration: none; border-radius: var(--radius-sm); font-size: 0.875rem; font-weight: 500; transition: background 0.2s ease;" onmouseover="this.style.background='var(--primary-hover)'" onmouseout="this.style.background='var(--primary)'">View →</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if top_runs|length == 0 %}
+                <tr><td colspan="7" style="padding: 2rem; text-align: center; color: var(--text-muted);">No rank folders were generated.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+
+<!-- Equity Curves Overlay (Full Width) -->
+<section class="card" style="margin-bottom: 2.5rem;">
+    <div class="section-header" style="margin-bottom: 1.5rem;">
+        <div>
+        <p class=\"eyebrow\" style=\"color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;\">Profit Growth</p>
+            <h3 style=\"color: #ffffff; font-size: 1.25rem; font-weight: 600; margin: 0;\">Profit by Trade - Top 5 Results</h3>
+        </div>
+    </div>
+    <div style="padding: 1rem 0; position: relative;">
+        <div id="equityCurvesLoader" style="display: flex; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; flex-direction: column; align-items: center;">
+            <div style="border: 3px solid var(--bg-secondary); border-top: 3px solid var(--primary); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;">Rendering profit curves...</p>
+        </div>
+        <div id="equityCurvesChart" style="min-height: 450px;"></div>
+    </div>
+    <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: var(--bg-tertiary); border-left: 3px solid var(--success); border-radius: var(--radius-sm);">
+        <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;"><strong>💡</strong> Shows cumulative profit at each trade for top 5 results. Steeper curves = better profit per trade. Hover for exact values.</p>
+    </div>
+</section>
+
+<!-- Charts Grid Layout (2x2) -->
+<section style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <!-- Distribution Chart -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="section-header" style="margin-bottom: 1.5rem;">
+            <div>
+                <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Performance Distribution</p>
+                <h3 style="color: var(--text-primary); font-size: 1.15rem; font-weight: 600; margin: 0;">Return Distribution</h3>
+            </div>
+        </div>
+        <div style="padding: 1rem 0;">
+            <canvas id="distributionChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Return vs Sharpe Chart -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="section-header" style="margin-bottom: 1.5rem;">
+            <div>
+                <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Metric Tradeoffs</p>
+                <h3 style="color: var(--text-primary); font-size: 1.15rem; font-weight: 600; margin: 0;">Return vs Sharpe</h3>
+            </div>
+        </div>
+        <div style="padding: 1rem 0;">
+            <canvas id="returnSharpeChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Return vs Drawdown Chart -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="section-header" style="margin-bottom: 1.5rem;">
+            <div>
+                <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Risk Analysis</p>
+                <h3 style="color: var(--text-primary); font-size: 1.15rem; font-weight: 600; margin: 0;">Return vs Drawdown</h3>
+            </div>
+        </div>
+        <div style="padding: 1rem 0;">
+            <canvas id="returnDrawdownChart" style="max-height: 300px;"></canvas>
+        </div>
+    </div>
+
+    <!-- Parameter Grid Summary -->
+    <div class="card" style="margin-bottom: 0;">
+        <div class="section-header" style="margin-bottom: 1.5rem;">
+            <div>
+                <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Parameter Impact</p>
+                <h3 style="color: var(--text-primary); font-size: 1.15rem; font-weight: 600; margin: 0;">Top Parameter Values</h3>
+            </div>
+        </div>
+        <div id="topParamsBox" style="padding: 1rem; overflow-y: auto; max-height: 300px;">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+</section>
+
+
+
+
+<!-- Statistics Overview -->
+<section style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); border: 1px solid var(--border-light); padding: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem;">📊</span>
+            <h3 style="color: var(--text-primary); font-size: 1.1rem; font-weight: 600; margin: 0;">Optimization Stats</h3>
+        </div>
+        <ul class="summary-list" style="list-style: none; padding: 0; margin: 0;">
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Total Tests</span>
+                <span id="totalTests" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">{{ results.total_combinations }}</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Profitable</span>
+                <span id="profitableCount" style="color: var(--success); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Best Result</span>
+                <span id="bestResult" style="color: var(--success); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0;">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Median Result</span>
+                <span id="medianResult" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+        </ul>
+    </div>
+    <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); border: 1px solid var(--border-light); padding: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem;">🎯</span>
+            <h3 style="color: var(--text-primary); font-size: 1.1rem; font-weight: 600; margin: 0;">Top {{ top_runs|length }} Consistency</h3>
+        </div>
+        <ul class="summary-list" style="list-style: none; padding: 0; margin: 0;">
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Avg Return</span>
+                <span id="topAvgReturn" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Std Dev</span>
+                <span id="topStdDev" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Avg Sharpe</span>
+                <span id="topAvgSharpe" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0;">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Robustness</span>
+                <span id="robustnessScore" style="color: var(--primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+        </ul>
+    </div>
+    <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); border: 1px solid var(--border-light); padding: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem;">⚠️</span>
+            <h3 style="color: var(--text-primary); font-size: 1.1rem; font-weight: 600; margin: 0;">Risk Profile</h3>
+        </div>
+        <ul class="summary-list" style="list-style: none; padding: 0; margin: 0;">
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Best Sharpe</span>
+                <span id="bestSharpe" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Avg Drawdown</span>
+                <span id="avgDrawdown" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Worst Drawdown</span>
+                <span id="worstDrawdown" style="color: var(--error); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+            <li style="display: flex; justify-content: space-between; padding: 0.65rem 0;">
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">Avg Trades</span>
+                <span id="avgTrades" style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">-</span>
+            </li>
+        </ul>
+    </div>
+    <div class="card" style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); border: 1px solid var(--border-light); padding: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem;">🔧</span>
+            <h3 style="color: var(--text-primary); font-size: 1.1rem; font-weight: 600; margin: 0;">Parameter Ranges</h3>
+        </div>
+        <ul class="summary-list" id="paramRanges" style="list-style: none; padding: 0; margin: 0;">
+            <!-- Populated by JS with same styling as other cards -->
+        </ul>
+    </div>
+</section>
+
+
+<!-- Parameter Statistics Table -->
+<section class="card" style="margin-bottom: 2.5rem;">
+    <div class="section-header" style="margin-bottom: 1.5rem;">
+        <div>
+            <p class="eyebrow" style="color: var(--primary); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Parameter Analysis</p>
+            <h3 style="color: var(--text-primary); font-size: 1.25rem; font-weight: 600; margin: 0;">Statistical Summary by Parameter</h3>
+        </div>
+    </div>
+    <div class="table-container">
+        <table class="results-table">
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Best Value</th>
+                    <th>Top {{ top_runs|length }} Avg</th>
+                    <th>Top {{ top_runs|length }} Range</th>
+                    <th>All Runs Avg</th>
+                    <th title="Correlation coefficient between this parameter and the optimization metric. Higher values (>0.5) indicate strong influence on results.">Impact Score ⓘ</th>
+                </tr>
+            </thead>
+            <tbody id="paramStatsTable">
+                <!-- Populated by JS -->
+            </tbody>
+        </table>
+    </div>
+</section>
+
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function deleteOptimization() {
+    const ok = window.confirm('Are you sure you want to delete this optimization result? This action cannot be undone.');
+    if (!ok) return;
+
+    try {
+        const res = await fetch('{{ url_for('results.delete_optimization_result', result_id=result_id) }}', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            alert('Optimization deleted successfully.');
+            window.location.href = '{{ url_for('results.results_page') }}';
+        } else {
+            alert('Failed to delete: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+const allResults = {{ (results.all_results or [])|tojson }};
+const baseParams = {{ (results.base_params or results.run_settings or {})|tojson }};
+const runSettings = {{ (results.run_settings or {})|tojson }};
+const topResults = {{ results.top_results|tojson }};
+const paramNames = {{ results.best_parameters.keys()|list|tojson }};
+const bestParams = {{ results.best_parameters|tojson }};
+const optMetric = '{{ results.optimization_metric }}';
+const isOptPercent = {{ 'true' if is_opt_percent else 'false' }};
+
+function parseTimestamp(ts) {
+    if (!ts) return null;
+    const direct = Date.parse(ts);
+    if (!Number.isNaN(direct)) return new Date(direct);
+    const m = ts.match(/^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+        const day = m[1];
+        const month = m[2];
+        const year = m[3];
+        const hour = m[4];
+        const minute = m[5];
+        const second = m[6] || '00';
+        return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
+    }
+    return null;
+}
+
+// Calculate statistics
+function calcStats() {
+    console.log('[calcStats] Started - allResults.length:', allResults.length);
+    console.log('[calcStats] topResults.length:', topResults.length);
+    console.log('[calcStats] Sample allResults[0]:', allResults[0]);
+    
+    if (allResults.length === 0) {
+        console.warn('[calcStats] No all_results data available');
+        return { profitable: 0, unprofitable: 0, avgReturn: 0, maxReturn: 0, minReturn: 0 };
+    }
+    const allReturns = allResults.map(r => r.metrics.total_return);
+    const profitable = allReturns.filter(r => r > 0).length;
+    const median = allReturns.sort((a, b) => a - b)[Math.floor(allReturns.length / 2)];
+    
+    const topReturns = topResults.slice(0, 10).map(r => r.metrics.total_return);
+    const topAvg = topReturns.reduce((a, b) => a + b, 0) / topReturns.length;
+    const topStd = Math.sqrt(topReturns.reduce((sum, r) => sum + Math.pow(r - topAvg, 2), 0) / topReturns.length);
+    const robustness = topStd > 0 ? topAvg / topStd : 0;
+    
+    const topSharpes = topResults.slice(0, 10).map(r => r.metrics.sharpe_ratio || 0);
+    const topAvgSharpe = topSharpes.reduce((a, b) => a + b, 0) / topSharpes.length;
+    const bestSharpe = Math.max(...topSharpes);
+    
+    const topDrawdowns = topResults.slice(0, 10).map(r => (r.metrics.max_drawdown || 0));
+    const avgDrawdown = topDrawdowns.reduce((a, b) => a + b, 0) / topDrawdowns.length;
+    const worstDrawdown = Math.max(...topDrawdowns);
+    
+    const topTrades = topResults.slice(0, 10).map(r => r.metrics.total_trades || 0);
+    const avgTrades = Math.round(topTrades.reduce((a, b) => a + b, 0) / topTrades.length);
+    
+    document.getElementById('profitableCount').textContent = `${profitable} (${(profitable/allResults.length*100).toFixed(1)}%)`;
+    document.getElementById('bestResult').textContent = `${Math.max(...allReturns).toFixed(2)}%`;
+    document.getElementById('medianResult').textContent = `${median.toFixed(2)}%`;
+    document.getElementById('topAvgReturn').textContent = `${topAvg.toFixed(2)}%`;
+    document.getElementById('topStdDev').textContent = `${topStd.toFixed(2)}%`;
+    document.getElementById('topAvgSharpe').textContent = topAvgSharpe.toFixed(2);
+    document.getElementById('robustnessScore').textContent = robustness.toFixed(2);
+    document.getElementById('bestSharpe').textContent = bestSharpe.toFixed(2);
+    document.getElementById('avgDrawdown').textContent = `${avgDrawdown.toFixed(2)}%`;
+    document.getElementById('worstDrawdown').textContent = `${worstDrawdown.toFixed(2)}%`;
+    document.getElementById('avgTrades').textContent = avgTrades;
+    
+    // Parameter ranges
+    const rangesHtml = paramNames.map(param => {
+        const values = allResults.map(r => r.parameters[param]);
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        return `<li style="display: flex; justify-content: space-between; padding: 0.65rem 0; border-bottom: 1px solid var(--border-color);"><span style="color: var(--text-secondary); font-size: 0.9rem;">${param}</span><span style="color: var(--text-primary); font-weight: 600; font-size: 0.95rem;">${min} - ${max}</span></li>`;
+    }).join('');
+    document.getElementById('paramRanges').innerHTML = rangesHtml;
+}
+
+// Performance distribution histogram
+function renderDistribution() {
+    console.log('[renderDistribution] Started - allResults.length:', allResults.length);
+    
+    if (allResults.length === 0) {
+        console.warn('[renderDistribution] No all_results data available for distribution chart');
+        const canvas = document.getElementById('distributionChart');
+        if (canvas) canvas.style.display = 'none';
+        return;
+    }
+    const returns = allResults.map(r => r.metrics.total_return);
+    const bins = 20;
+    const min = Math.min(...returns);
+    const max = Math.max(...returns);
+    const binSize = (max - min) / bins;
+    
+    const histogram = new Array(bins).fill(0);
+    const labels = [];
+    
+    for (let i = 0; i < bins; i++) {
+        const binStart = min + i * binSize;
+        labels.push(binStart.toFixed(1));
+        returns.forEach(r => {
+            if (r >= binStart && r < binStart + binSize) histogram[i]++;
+        });
+    }
+    
+    new Chart(document.getElementById('distributionChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Frequency',
+                data: histogram,
+                backgroundColor: 'rgba(33, 150, 243, 0.7)',
+                borderColor: 'rgba(33, 150, 243, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false, labels: { color: '#ffffff' } },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => `Return: ${items[0].label}% - ${(parseFloat(items[0].label) + binSize).toFixed(1)}%`,
+                        label: (context) => `Count: ${context.parsed.y}`
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Return (%)', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                y: { title: { display: true, text: 'Frequency', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' }, beginAtZero: true }
+            }
+        }
+    });
+}
+
+// Multi-parameter scatter grid
+function renderParameterGrid() {
+    console.log('[renderParameterGrid] Started - paramNames:', paramNames, 'allResults.length:', allResults.length);
+    
+    const container = document.getElementById('parameterGrid');
+    if (!container) {
+        console.log('[renderParameterGrid] Container not found, skipping');
+        return;
+    }
+    
+    paramNames.forEach(param => {
+        const div = document.createElement('div');
+        const canvas = document.createElement('canvas');
+        canvas.id = `param_${param}`;
+        canvas.style.maxHeight = '300px';
+        
+        const header = document.createElement('h4');
+        header.textContent = `${param} vs ${optMetric.replace('_', ' ')}`;
+        header.style.marginBottom = '1rem';
+        header.style.fontSize = '0.95rem';
+        header.style.color = '#ffffff';
+        header.style.fontWeight = '600';
+        
+        div.appendChild(header);
+        div.appendChild(canvas);
+        container.appendChild(div);
+        
+        const paramValues = allResults.map(r => r.parameters[param]);
+        const metricValues = allResults.map(r => {
+            const val = r.metrics[optMetric] || 0;
+            return isOptPercent ? val : val;
+        });
+        
+        // Color top results differently
+        const topParamSet = new Set(topResults.slice(0, 10).map(r => JSON.stringify(r.parameters)));
+        const colors = allResults.map(r => 
+            topParamSet.has(JSON.stringify(r.parameters)) ? 'rgba(76, 175, 80, 0.8)' : 'rgba(33, 150, 243, 0.5)'
+        );
+        
+        new Chart(canvas, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: param,
+                    data: paramValues.map((val, idx) => ({ x: val, y: metricValues[idx] })),
+                    backgroundColor: colors,
+                    borderColor: colors.map(c => c.replace('0.5', '1').replace('0.8', '1')),
+                    borderWidth: 1,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false, labels: { color: '#ffffff' } },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => `${param}: ${context.parsed.x}, ${optMetric}: ${context.parsed.y.toFixed(2)}${isOptPercent ? '%' : ''}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: param, font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                    y: { title: { display: true, text: optMetric.replace('_', ' ') + (isOptPercent ? ' (%)' : ''), font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } }
+                }
+            }
+        });
+    });
+}
+
+// Metric correlation charts
+function renderCorrelations() {
+    console.log('[renderCorrelations] Started - topResults.length:', topResults.length);
+    
+    // Return vs Sharpe
+    const returnSharpeData = topResults.map(r => ({
+        x: r.metrics.sharpe_ratio || 0,
+        y: (r.metrics.total_return || 0)
+    }));
+    
+    console.log('[renderCorrelations] returnSharpeData:', returnSharpeData);
+    
+    new Chart(document.getElementById('returnSharpeChart'), {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Top Results',
+                data: returnSharpeData,
+                backgroundColor: 'rgba(156, 39, 176, 0.7)',
+                borderColor: 'rgba(156, 39, 176, 1)',
+                borderWidth: 1,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false, labels: { color: '#ffffff' } },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `Sharpe: ${context.parsed.x.toFixed(2)}, Return: ${context.parsed.y.toFixed(2)}%`
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Sharpe Ratio', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                y: { title: { display: true, text: 'Total Return (%)', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } }
+            }
+        }
+    });
+    
+    // Return vs Drawdown
+    const returnDrawdownData = topResults.map(r => ({
+        x: (r.metrics.max_drawdown || 0),
+        y: (r.metrics.total_return || 0)
+    }));
+    
+    new Chart(document.getElementById('returnDrawdownChart'), {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Top Results',
+                data: returnDrawdownData,
+                backgroundColor: 'rgba(255, 152, 0, 0.7)',
+                borderColor: 'rgba(255, 152, 0, 1)',
+                borderWidth: 1,
+                pointRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false, labels: { color: '#ffffff' } },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => `Drawdown: ${context.parsed.x.toFixed(2)}%, Return: ${context.parsed.y.toFixed(2)}%`
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Max Drawdown (%)', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                y: { title: { display: true, text: 'Total Return (%)', font: { color: '#ffffff', size: 12 } }, ticks: { color: '#ffffff' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } }
+            }
+        }
+    });
+}
+
+// Parameter statistics table
+function renderParamStats() {
+    const tbody = document.getElementById('paramStatsTable');
+    
+    paramNames.forEach(param => {
+        const topValues = topResults.slice(0, 10).map(r => r.parameters[param]);
+        const allValues = allResults.map(r => r.parameters[param]);
+        
+        const topAvg = topValues.reduce((a, b) => a + b, 0) / topValues.length;
+        const topMin = Math.min(...topValues);
+        const topMax = Math.max(...topValues);
+        const allAvg = allValues.reduce((a, b) => a + b, 0) / allValues.length;
+        
+        // Calculate impact score (correlation with metric)
+        const metricValues = allResults.map(r => r.metrics[optMetric] || 0);
+        const correlation = calculateCorrelation(allValues, metricValues);
+        const impactScore = Math.abs(correlation);
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${param}</strong></td>
+            <td>${bestParams[param]}</td>
+            <td>${topAvg.toFixed(2)}</td>
+            <td>${topMin} - ${topMax}</td>
+            <td>${allAvg.toFixed(2)}</td>
+            <td><span class="pill" style="background: ${impactScore > 0.5 ? 'var(--success-bg)' : impactScore > 0.3 ? 'var(--warning-bg)' : 'var(--bg-secondary)'};">${impactScore.toFixed(3)}</span></td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function calculateCorrelation(x, y) {
+    const n = x.length;
+    const sumX = x.reduce((a, b) => a + b, 0);
+    const sumY = y.reduce((a, b) => a + b, 0);
+    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
+    const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
+    
+    const numerator = n * sumXY - sumX * sumY;
+    const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    
+    return denominator === 0 ? 0 : numerator / denominator;
+}
+
+// Populate top parameters in 2x2 grid
+function renderTopParams() {
+    console.log('[renderTopParams] Started - topResults.length:', topResults.length);
+    
+    const topParamsBox = document.getElementById('topParamsBox');
+    if (!topParamsBox) {
+        console.warn('[renderTopParams] No topParamsBox element found');
+        return;
+    }
+    
+    const top5 = topResults.slice(0, 5);
+    if (top5.length === 0) {
+        topParamsBox.innerHTML = '<p style="color: var(--text-muted);">No data available</p>';
+        return;
+    }
+    
+    let html = '<div style="display: grid; gap: 0.75rem;">';
+    top5.forEach((result, idx) => {
+        const params = result.parameters || {};
+        const metric = result.metrics[optMetric] || 'N/A';
+        const metricStr = isOptPercent ? `${metric.toFixed(2)}%` : metric.toFixed(4);
+        
+        const paramStr = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(', ');
+        
+        html += `<div style="padding: 0.75rem; background: var(--bg-tertiary); border-radius: var(--radius-sm); border-left: 3px solid var(--primary);">
+            <div style="font-weight: 600; color: var(--primary); font-size: 0.9rem;">Rank #${idx + 1}: ${metricStr}</div>
+            <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.25rem;">${paramStr}</div>
+        </div>`;
+    });
+    html += '</div>';
+    
+    topParamsBox.innerHTML = html;
+}
+
+// Equity curves visualization - Load from backtest results JSON
+function renderEquityCurves() {
+    console.log('[renderEquityCurves] Started - topResults.length:', topResults.length);
+    
+    const colors = [
+        'rgb(16, 185, 129)',    // green
+        'rgb(59, 130, 246)',    // blue
+        'rgb(249, 115, 22)',    // orange
+        'rgb(139, 92, 246)',    // purple
+        'rgb(236, 72, 153)',    // pink
+    ];
+    
+    // Show loader
+    const loader = document.getElementById('equityCurvesLoader');
+    if (loader) loader.style.display = 'flex';
+    
+    console.log('[renderEquityCurves] Starting equity curves rendering...');
+    console.log('[renderEquityCurves] Top results available:', topResults.length);
+    
+    // Try to load equity curves from backtest results (top 5 only)
+    const traces = [];
+    const top5 = topResults.slice(0, 5);
+    
+    if (top5.length === 0) {
+        console.warn('[renderEquityCurves] No top5 results');
+        if (loader) loader.style.display = 'none';
+        const chartDiv = document.getElementById('equityCurvesChart');
+        if (chartDiv) {
+            chartDiv.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No top results available</p>';
+        }
+        return;
+    }
+    
+    // Load each backtest result
+    let loadedCount = 0;
+    let allTimestamps = [];
+    
+    top5.forEach((result, idx) => {
+        try {
+            // Equity data should be in result.equity_curve if loaded from optimization_results.json
+            // or we need to fetch from the backtest folder
+            let equityData = result.equity_curve;
+            
+            // If not present, we may need to load it
+            if (!equityData || equityData.length === 0) {
+                console.warn(`Rank ${idx + 1}: No equity_curve in result data`);
+                return;
+            }
+            
+            // Collect timestamps
+            equityData.forEach(eq => {
+                if (eq.timestamp) {
+                    const parsed = parseTimestamp(eq.timestamp);
+                    if (parsed) allTimestamps.push(parsed);
+                }
+            });
+            
+            loadedCount++;
+        } catch (e) {
+            console.error(`Error loading rank ${idx + 1}:`, e);
+        }
+    });
+    
+    if (loadedCount === 0) {
+        if (loader) loader.style.display = 'none';
+        const chartDiv = document.getElementById('equityCurvesChart');
+        if (chartDiv) {
+            chartDiv.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">Equity curve data not loaded in results. Data may need to be fetched from backtest files.</p>';
+        }
+        console.warn('No equity curves could be loaded');
+        return;
+    }
+    
+    // Build traces from loaded data
+    const sortedTimestamps = allTimestamps.sort((a, b) => a - b);
+    if (sortedTimestamps.length === 0) {
+        if (loader) loader.style.display = 'none';
+        const chartDiv = document.getElementById('equityCurvesChart');
+        if (chartDiv) {
+            chartDiv.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No valid timestamp data found</p>';
+        }
+        return;
+    }
+    
+    const minDate = sortedTimestamps[0];
+    const maxDate = sortedTimestamps[sortedTimestamps.length - 1];
+    const initialCapital = 10000;
+    
+    top5.forEach((result, idx) => {
+        try {
+            const equityData = result.equity_curve;
+            if (!equityData || equityData.length === 0) return;
+            
+            // Filter and prepare data
+            const filteredEquity = equityData.filter(eq => {
+                if (!eq.timestamp || eq.equity === undefined) return false;
+                const eqDate = parseTimestamp(eq.timestamp);
+                return eqDate && eqDate >= minDate && eqDate <= maxDate;
+            });
+            
+            if (filteredEquity.length === 0) return;
+            
+            const dates = filteredEquity.map(eq => {
+                const parsed = parseTimestamp(eq.timestamp);
+                return parsed ? parsed.toISOString() : eq.timestamp;
+            });
+            
+            const profit = filteredEquity.map(eq => (eq.equity || initialCapital) - initialCapital);
+            
+            traces.push({
+                x: dates,
+                y: profit,
+                name: `Rank #${idx + 1} (${(result.metrics.total_return).toFixed(1)}%)`,
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: colors[idx % colors.length],
+                    width: 2.5
+                },
+                hovertemplate: '%{x|%Y-%m-%d %H:%M}<br>Profit: $%{y:.2f}<extra></extra>'
+            });
+        } catch (e) {
+            console.error(`Error processing rank ${idx + 1}:`, e);
+        }
+    });
+    
+    if (traces.length === 0) {
+        if (loader) loader.style.display = 'none';
+        const chartDiv = document.getElementById('equityCurvesChart');
+        if (chartDiv) {
+            chartDiv.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 2rem;">No data available for chart rendering</p>';
+        }
+        return;
+    }
+    
+    const chartDiv = document.getElementById('equityCurvesChart');
+    if (!chartDiv) {
+        if (loader) loader.style.display = 'none';
+        return;
+    }
+    
+    const layout = {
+        title: '',
+        margin: { l: 60, r: 20, t: 20, b: 80 },
+        hovermode: 'closest',
+        plot_bgcolor: 'transparent',
+        paper_bgcolor: 'transparent',
+        font: {
+            family: 'system-ui, -apple-system, sans-serif',
+            size: 12,
+            color: '#ffffff'
+        },
+        xaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            zeroline: false,
+            title: {
+                text: 'Date',
+                font: { color: '#ffffff', size: 12 }
+            },
+            tickfont: { color: '#ffffff', size: 11 },
+            tickformat: '%Y-%m-%d',
+            tickangle: -45
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: 'rgba(148, 163, 184, 0.1)',
+            zeroline: true,
+            zerolinecolor: 'rgba(148, 163, 184, 0.3)',
+            title: {
+                text: 'Cumulative Profit ($)',
+                font: { color: '#ffffff', size: 12 }
+            },
+            tickfont: { color: '#ffffff', size: 11 },
+            tickformat: '$,.0f'
+        },
+        legend: {
+            x: 0.02,
+            y: 0.98,
+            bgcolor: 'rgba(15, 23, 42, 0.7)',
+            bordercolor: 'rgba(148, 163, 184, 0.3)',
+            borderwidth: 1,
+            font: { color: '#ffffff', size: 11 }
+        }
+    };
+    
+    const config = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        toImageButtonOptions: {
+            format: 'png',
+            filename: 'profit_curves.png',
+            height: 600,
+            width: 1000,
+            scale: 1
+        }
+    };
+    
+    Plotly.newPlot('equityCurvesChart', traces, layout, config);
+    
+    console.log(`Successfully rendered ${traces.length} equity curves`);
+    
+    // Hide loader after chart renders
+    if (loader) loader.style.display = 'none';
+}
+
+// Initialize all visualizations
+console.log('[INIT] Starting visualization initialization...');
+console.log('[INIT] allResults:', allResults.length);
+console.log('[INIT] topResults:', topResults.length);
+console.log('[INIT] paramNames:', paramNames);
+
+calcStats();
+console.log('[INIT] calcStats() completed');
+
+renderTopParams();
+console.log('[INIT] renderTopParams() completed');
+
+renderEquityCurves();
+console.log('[INIT] renderEquityCurves() completed');
+
+renderDistribution();
+console.log('[INIT] renderDistribution() completed');
+
+renderParameterGrid();
+console.log('[INIT] renderParameterGrid() completed');
+
+renderCorrelations();
+console.log('[INIT] renderCorrelations() completed');
+
+renderParamStats();
+console.log('[INIT] renderParamStats() completed');
+
+console.log('[INIT] All visualizations initialized');
+
+// Enable sorting on Top Runs table
+(() => {
+    const table = document.getElementById('topRunsTable');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const headers = table.querySelectorAll('thead th.sortable');
+    let sortState = { index: 0, dir: 'asc' };
+
+    function getCellValue(tr, idx) {
+        const td = tr.children[idx];
+        if (!td) return '';
+        const v = td.getAttribute('data-sort');
+        return v !== null ? v : td.textContent.trim();
+    }
+
+    function compare(a, b, type, dir) {
+        const av = getCellValue(a, sortState.index);
+        const bv = getCellValue(b, sortState.index);
+        if (type === 'number') {
+            const an = parseFloat(av) || 0;
+            const bn = parseFloat(bv) || 0;
+            return dir === 'asc' ? an - bn : bn - an;
+        }
+        // string
+        return dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    }
+
+    headers.forEach((th, idx) => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const type = th.getAttribute('data-sort') || 'string';
+            // toggle direction if clicking same col
+            if (sortState.index === idx) {
+                sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState = { index: idx, dir: 'asc' };
+            }
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => compare(a, b, type, sortState.dir));
+            tbody.innerHTML = '';
+            rows.forEach(r => tbody.appendChild(r));
+        });
+    });
+})();
+
+// Params tooltip logic - use window scope for inline onclick handlers
+window.paramsTooltipEl = null;
+window.paramsTooltipBtn = null;
+
+window.ensureParamsTooltip = function() {
+    if (!window.paramsTooltipEl) {
+        window.paramsTooltipEl = document.createElement('div');
+        window.paramsTooltipEl.id = 'paramsTooltip';
+        window.paramsTooltipEl.className = 'params-tooltip hidden';
+        window.paramsTooltipEl.setAttribute('role', 'dialog');
+        window.paramsTooltipEl.innerHTML = '<div class="params-tooltip-card"><div id="paramsTooltipContent"></div></div>';
+        document.body.appendChild(window.paramsTooltipEl);
+    }
+    return window.paramsTooltipEl;
+}
+
+window.openParamsTooltip = function(btn) {
+    try {
+        const raw = btn.getAttribute('data-params') || '{}';
+        const params = JSON.parse(raw);
+        const listHtml = Object.keys(params).sort().map(k => `<div class=\"row\"><span class=\"k\">${k}</span><span class=\"v\">${params[k]}</span></div>`).join('');
+        const tooltip = window.ensureParamsTooltip();
+        const content = document.getElementById('paramsTooltipContent');
+        if (content) content.innerHTML = `<div class=\"params-list\">${listHtml}</div>`;
+
+        // Toggle logic
+        if (window.paramsTooltipBtn === btn && !tooltip.classList.contains('hidden')) {
+            window.closeParamsTooltip();
+            return;
+        }
+
+        window.paramsTooltipBtn = btn;
+        window.positionTooltip(btn, tooltip);
+        tooltip.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+    } catch (e) {
+        console.error('Failed to open params tooltip', e);
+    }
+}
+
+window.positionTooltip = function(btn, tooltip) {
+    const rect = btn.getBoundingClientRect();
+    const scrollY = window.scrollY || document.documentElement.scrollTop;
+    const scrollX = window.scrollX || document.documentElement.scrollLeft;
+    tooltip.style.top = `${rect.bottom + scrollY + 8}px`;
+    tooltip.style.left = `${rect.left + scrollX}px`;
+}
+
+window.closeParamsTooltip = function() {
+    if (!window.paramsTooltipEl) return;
+    window.paramsTooltipEl.classList.add('hidden');
+    if (window.paramsTooltipBtn) window.paramsTooltipBtn.setAttribute('aria-expanded', 'false');
+    window.paramsTooltipBtn = null;
+}
+
+window.addEventListener('resize', () => {
+    if (window.paramsTooltipEl && !window.paramsTooltipEl.classList.contains('hidden') && window.paramsTooltipBtn) {
+        window.positionTooltip(window.paramsTooltipBtn, window.paramsTooltipEl);
+    }
+});
+
+document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (window.paramsTooltipEl && !window.paramsTooltipEl.classList.contains('hidden')) {
+        if (window.paramsTooltipEl.contains(t)) return; // clicks inside tooltip
+        if (window.paramsTooltipBtn && (t === window.paramsTooltipBtn || window.paramsTooltipBtn.contains(t))) return; // clicks on the button
+        window.closeParamsTooltip();
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') window.closeParamsTooltip();
+});
+</script>
+
+<!-- Mobile Responsive Styles -->
+<style>
+/* Params tooltip */
+.params-tooltip.hidden { display: none; }
+.params-tooltip { position: absolute; z-index: 1000; }
+.params-tooltip-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.75rem 0.9rem; min-width: 260px; max-width: 360px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.params-tooltip-card .row { display:flex; justify-content:space-between; align-items:flex-start; gap:0.75rem; padding:0.35rem 0; border-bottom:1px solid var(--border-color); }
+.params-tooltip-card .row:last-child { border-bottom: none; }
+.params-tooltip-card .k { color: var(--text-secondary); }
+.params-tooltip-card .v { color: var(--text-primary); font-weight: 600; }
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    /* Stack page container with reduced padding */
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+    
+    .header-actions {
+        margin-top: 1rem;
+        width: 100%;
+    }
+    
+    /* Stack KPI cards vertically on mobile */
+    section[style*="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr))"] {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* Stack best parameters and summary */
+    section[style*="grid-template-columns: 2fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* Make table horizontally scrollable */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Reduce font sizes for mobile */
+    h1 {
+        font-size: 1.5rem !important;
+    }
+    
+    h2 {
+        font-size: 1.25rem !important;
+    }
+    
+    h3 {
+        font-size: 1.1rem !important;
+    }
+    
+    /* Adjust KPI card text */
+    .card[style*="gradient"] > div {
+        font-size: 2rem !important;
+    }
+    
+    /* Stack footer grid items */
+    footer > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 1rem !important;
+    }
+    
+    /* Reduce padding on mobile */
+    div[style*="max-width: 1400px"] {
+        padding: 0 1rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Further adjustments for very small screens */
+    .breadcrumbs {
+        font-size: 0.75rem !important;
+    }
+    
+    .breadcrumbs span[style*="margin"] {
+        margin: 0 0.25rem !important;
+    }
+    
+    /* Stack footer items fully */
+    footer > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+    
+    /* Smaller KPI numbers */
+    .card[style*="gradient"] > div {
+        font-size: 1.75rem !important;
+    }
+}
+</style>
+<!-- Tooltip markup is dynamically created via JS -->
+{% endblock %}

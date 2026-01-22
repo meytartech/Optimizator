@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Data Management - Backtesting System{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/data.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Data Management</h1>
+</div>
+
+<!-- Hidden file inputs for upload -->
+<input type="file" id="fileInput" name="file" accept=".csv" style="display:none;">
+<input type="file" id="scoresFileInput" name="file" accept=".db" style="display:none;">
+
+<div class="data-tables-flex">
+    <div class="section-card data-list">
+        <div class="list-header">
+            <div>
+                <h2>Uploaded Data Files</h2>
+                <p class="subtext">Latest uploads appear first</p>
+            </div>
+            <button class="btn btn-primary btn-small" onclick="document.getElementById('fileInput').click()" title="Upload CSV">+ Upload</button>
+        </div>
+        <div id="uploadMessage" class="message" style="display:none;"></div>
+        {% if files %}
+        <div class="table-container compact-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in files %}
+                    <tr>
+                        <td>{{ file.name }}</td>
+                        <td>{{ file.size }}</td>
+                        <td>{{ file.modified }}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-small btn-danger" onclick="deleteData('{{ file.name }}')">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-message">No data files uploaded yet. Upload your first CSV file above!</p>
+        {% endif %}
+    </div>
+
+    <div class="section-card data-list">
+        <div class="list-header">
+            <div>
+                <h2>Uploaded Score Databases</h2>
+                <p class="subtext">Use these in Backtest as optional scores</p>
+            </div>
+            <button class="btn btn-primary btn-small" onclick="document.getElementById('scoresFileInput').click()" title="Upload Score DB">+ Upload</button>
+        </div>
+        <div id="uploadScoresMessage" class="message" style="display:none;"></div>
+        {% if score_files %}
+        <div class="table-container compact-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in score_files %}
+                    <tr>
+                        <td>{{ file.name }}</td>
+                        <td>{{ file.size }}</td>
+                        <td>{{ file.modified }}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-small btn-danger" onclick="deleteScores('{{ file.name }}')">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+                {% else %}
+                <p class="empty-message">No score databases uploaded yet. Upload a .db file above!</p>
+                {% endif %}
+    </div>
+</div>
+
+<!-- Custom Confirm Modal -->
+<div id="confirmModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <h3 id="confirmTitle">Please Confirm</h3>
+        <p id="confirmMessage">Are you sure?</p>
+        <div class="modal-actions">
+            <button id="confirmCancel" class="btn">Cancel</button>
+            <button id="confirmOk" class="btn btn-danger">Delete</button>
+        </div>
+    </div>
+    </div>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// CSV file upload handler
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const messageDiv = document.getElementById('uploadMessage');
+    messageDiv.style.display = 'block';
+    messageDiv.textContent = 'Uploading...';
+    messageDiv.className = 'message message-info';
+    
+    try {
+        const response = await fetch('/data/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.textContent = `✓ File uploaded successfully! Rows: ${data.info.rows}`;
+            messageDiv.className = 'message message-success';
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            messageDiv.textContent = `✗ Error: ${data.error}`;
+            messageDiv.className = 'message message-error';
+        }
+    } catch (error) {
+        messageDiv.textContent = `✗ Error: ${error.message}`;
+        messageDiv.className = 'message message-error';
+    }
+    e.target.value = '';
+});
+
+// Score DB file upload handler
+document.getElementById('scoresFileInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const messageDiv = document.getElementById('uploadScoresMessage');
+    messageDiv.style.display = 'block';
+    messageDiv.textContent = 'Uploading scores DB...';
+    messageDiv.className = 'message message-info';
+    
+    try {
+        const response = await fetch('/scores/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            messageDiv.textContent = `✓ Scores DB uploaded successfully: ${data.filename}`;
+            messageDiv.className = 'message message-success';
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            messageDiv.textContent = `✗ Error: ${data.error}`;
+            messageDiv.className = 'message message-error';
+        }
+    } catch (error) {
+        messageDiv.textContent = `✗ Error: ${error.message}`;
+        messageDiv.className = 'message message-error';
+    }
+    e.target.value = '';
+});
+
+async function deleteData(filename) {
+    const confirmed = await openConfirm(`Delete data file "${filename}"?`);
+    if (!confirmed) return;
+    try {
+        const response = await fetch(`/data/delete/${filename}`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        showToast(`Error: ${error.message}`);
+    }
+}
+
+async function deleteScores(filename) {
+    const confirmed = await openConfirm(`Delete score database "${filename}"?`);
+    if (!confirmed) return;
+    try {
+        const response = await fetch(`/scores/delete/${filename}`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            showToast('Scores DB deleted successfully');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        showToast(`Error: ${error.message}`);
+    }
+}
+
+// Modal & Toast helpers
+function openConfirm(message) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('confirmModal');
+        const msg = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        msg.textContent = message;
+        overlay.style.display = 'flex';
+        const cleanup = () => {
+            overlay.style.display = 'none';
+            okBtn.onclick = null;
+            cancelBtn.onclick = null;
+        };
+        cancelBtn.onclick = () => { cleanup(); resolve(false); };
+        okBtn.onclick = () => { cleanup(); resolve(true); };
+    });
+}
+
+function showToast(text) {
+    const toast = document.getElementById('toast');
+    toast.textContent = text;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 1500);
+}
+</script>
+{% endblock %}

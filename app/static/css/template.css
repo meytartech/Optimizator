@@ -1,0 +1,131 @@
+/* Strategy Template Generator Page Styles */
+
+.template-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xl);
+    margin-top: var(--space-xl);
+}
+
+.template-form-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    height: fit-content;
+}
+
+.template-preview-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl);
+    position: sticky;
+    top: 80px;
+}
+
+.section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-md);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.parameters-section {
+    margin-top: var(--space-lg);
+}
+
+.parameters-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.parameter-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+    gap: var(--space-sm);
+    align-items: end;
+}
+
+.parameter-row .form-group {
+    margin-bottom: 0;
+}
+
+.btn-icon {
+    padding: var(--space-sm);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+}
+
+.btn-add {
+    width: 100%;
+    margin-top: var(--space-md);
+}
+
+.preview-code {
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.preview-code pre {
+    margin: 0;
+    white-space: pre;
+}
+
+.code-keyword {
+    color: #c678dd;
+}
+
+.code-string {
+    color: #98c379;
+}
+
+.code-comment {
+    color: #5c6370;
+}
+
+.code-function {
+    color: #61afef;
+}
+
+.code-class {
+    color: #e5c07b;
+}
+
+.form-actions {
+    display: flex;
+    gap: var(--space-md);
+    margin-top: var(--space-xl);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 1024px) {
+    .template-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .template-preview-section {
+        position: static;
+    }
+    
+    .parameter-row {
+        grid-template-columns: 1fr;
+    }
+}
