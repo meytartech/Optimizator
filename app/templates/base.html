@@ -23,20 +23,6 @@
             </div>
             <ul class="navbar-nav">
                 <li>
-                    <a href="{{ url_for('results.results_page') }}" class="nav-link {% if request.endpoint == 'results.results_page' %}active{% endif %}">
-                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M1 13h14" />
-                                <path d="M3 9v4" />
-                                <path d="M7 6v7" />
-                                <path d="M11 4v9" />
-                                <path d="M15 2v11" />
-                            </svg>
-                        </span>
-                        Results
-                    </a>
-                </li>
-                <li>
                     <a href="{{ url_for('data.data_management') }}" class="nav-link {% if request.endpoint == 'data.data_management' %}active{% endif %}">
                         <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
                             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
@@ -73,6 +59,20 @@
                             </svg>
                         </span>
                         Optimize
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('results.results_page') }}" class="nav-link {% if request.endpoint == 'results.results_page' %}active{% endif %}">
+                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 13h14" />
+                                <path d="M3 9v4" />
+                                <path d="M7 6v7" />
+                                <path d="M11 4v9" />
+                                <path d="M15 2v11" />
+                            </svg>
+                        </span>
+                        Results
                     </a>
                 </li>
             </ul>

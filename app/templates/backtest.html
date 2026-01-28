@@ -32,7 +32,6 @@
                             <option value="{{ file }}">{{ file }}</option>
                             {% endfor %}
                         </select>
-                        <span class="field-hint">Combined .db file with OHLC + multi-timeframe scores (1m, 5m, 15m, 60m)</span>
                     </div>
                     <div class="form-group">
                         <label for="strategy" class="form-label-required">
@@ -43,7 +42,6 @@
                             <option value="{{ strategy }}" {% if strategy == 'mnq_strategy' %}selected{% endif %}>{{ strategy }}</option>
                             {% endfor %}
                         </select>
-                        <span class="field-hint">Choose which strategy to backtest</span>
                     </div>
                 </div>
             </div>
