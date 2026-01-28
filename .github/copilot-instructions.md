@@ -16,7 +16,7 @@ This is a Flask-based backtesting and parameter optimization platform for tradin
 
 ### Data Flow (Event-Driven Pattern)
 ```
-CSV → CSVDataLoader → prices_data (List[Dict])
+CSV/Combined DB → CSVDataLoader/ScoreDataLoader → prices_data + scores_data (List[Dict])
                 ↓
 GenericBacktester.run(strategy, data, scores)
     ↓ (for each bar)
@@ -32,12 +32,30 @@ Save to app/results/{backtests,optimizations}/ + equity_curve.png
 ```
 
 ### Dual-Dataset Pattern (Critical Feature)
-- **prices_data**: OHLCV bars from CSV (required, indexed by timestamp)
-- **scores_data**: Optional SQLite records (external indicators, sentiment, etc.), pre-filtered to 1m timeframe by backtester
-- Strategy receives both in `on_bar(price_bars, scores_data)` method on every bar
-- Strategies place orders via `self.buy(quantity, reason)` and `self.sell_short(quantity, reason)` - orders execute at **next bar's open** (realistic one-bar delay)
-- Position tracking: `self.position` is a **read-only property** that returns `self.engine.position_size` (auto-updated by unified `execute_exit()` function)
-- See `sources/STRATEGY_DEV_RULES.md` and `sources/SCORE_DATA_INTEGRATION.md` for detailed patterns
+
+### Data Input Pattern (Unified Combined DB Only)
+**As of January 2026, the ONLY supported data input is a single combined SQLite .db file with the following schema:**
+
+- **Table:** `combined_market_data`
+- **Columns:**
+    - `id` (INTEGER, primary key)
+    - `timestamp` (DATETIME, required)
+    - `score_1m` (FLOAT, required)
+    - `score_5m` (FLOAT, required)
+    - `score_15m` (FLOAT, required)
+    - `score_60m` (FLOAT, required)
+    - `open` (FLOAT, required)
+    - `high` (FLOAT, required)
+    - `low` (FLOAT, required)
+    - `close` (FLOAT, required)
+
+**No CSV or legacy score DBs are supported.**
+
+- Each row represents a single price bar and its associated multi-timeframe scores.
+- The system extracts both price and score data from this table for all backtests and optimizations.
+- Strategies receive both `price_bars` and `scores_data` in `on_bar()` as before, but all data is sourced from this unified table.
+
+See `sources/STRATEGY_DEV_RULES.md` for usage patterns and code examples.
 
 ---
 
@@ -54,7 +72,7 @@ Save to app/results/{backtests,optimizations}/ + equity_curve.png
 **Why**: Keeps project root clean, prevents documentation clutter, and provides a single documentation hub in `sources/` for all non-temporary project information.
 
 ### Rule 2: Scripts Location & Lifecycle
-**All production scripts must reside in `./scripts/` folder.** Only keep non-temporary, reusable scripts. Temporary test scripts must be deleted after execution.
+**All production scripts must reside in `./scripts/` folder.** Only keep non-temporary, reusable scripts. Temporary test scripts must be deleted after execution(e.g verification, db tests...).
 
 **Script Classification**:
 - **Production/Reusable Scripts** (keep in `./scripts/`): CLI tools, data loaders, validators, recurring test utilities (e.g., `backtest_standalone.py`, `test_scores_loading.py`)
@@ -136,7 +154,7 @@ def on_bar(self, price_bars, scores_data=None):
 | `core/backtester.py` | `GenericBacktester`: runs strategy, tracks trades, computes metrics |
 | `core/optimizer.py` | `StrategyOptimizer`: grid search over parameter ranges |
 | `core/data_loader.py` | `CSVDataLoader`: multi-format CSV parsing (OHLCV, simplified, angle-bracket) |
-| `core/score_loader.py` | `ScoreDataLoader`: loads SQLite score data for dual-dataset strategies |
+| `core/score_loader.py` | `ScoreDataLoader`: loads SQLite score data OR combined .db (OHLC+scores in one file) |
 | `core/equity_plotter.py` | `EquityPlotter`: matplotlib-based equity curve + drawdown visualization |
 | `scripts/` | Reusable CLI scripts for testing, validation, and standalone execution |
 | `sources/` | Non-temporary documentation (STRATEGY_GUIDE.md, SCORE_DATA_INTEGRATION.md, etc.) |
@@ -148,26 +166,20 @@ def on_bar(self, price_bars, scores_data=None):
 
 ### Create a New Strategy
 1. Create file `app/strategies/your_strategy.py` with class `YourStrategy(BaseStrategy)` (snake_case filename → PascalCase classname)
-2. Implement `setup()`, `generate_signal()`, `get_parameter_ranges()`
+2. Implement `setup()`, `on_bar()`, `get_parameter_ranges()`
 3. Use web UI "Strategy Template" generator for boilerplate
-4. Test via Backtest page (select strategy, upload data, run)
+4. Test via Backtest page (select strategy, upload combined .db file, run)
 
 ### Debug Strategy Issues
 - Check **timestamp matching**: ensure all signals' timestamps exist in prices_data
 - Use `bar.get('timestamp')`, `bar.get('close', bar.get('price'))` for field access (fallbacks)
-- Log intermediate calculations in `generate_signal()` to `stdout` (visible in server logs)
+- Log intermediate calculations in `on_bar()` to `stdout` (visible in server logs)
 - Review saved `strategy_code.txt` in results folder to confirm code was executed
 
 ### Add Optimization Parameters
 1. Update `setup()` to extract parameters from `self.params` with defaults
 2. Return tuples in `get_parameter_ranges()`: `'param_name': (min, max, step)`
 3. Optimizer grid-searches all combinations; backtester scores each
-
-### Integrate Score Data
-1. Ensure `.db` file exists in `db/` folder with schema: `channel_name`, `timestamp`, `score`, `change`, `momentum`, `price`, `created_at`
-2. In backtest form, select score file from dropdown
-3. In strategy, iterate `scores_data` list or filter by timestamp during `generate_signal()`
-4. See `core/score_loader.py` for `ScoreDataLoader.load_scores(db_path, channel_name, start_date, end_date)`
 
 ### Access Web UI
 ```bash
@@ -287,10 +299,12 @@ python scripts/test_csv_format.py <file.csv>
 
 ## Integration Points & External Data
 
-- **CSV Data**: Supports standard OHLCV, simplified (timestamp, price), and angle-bracket formats (`<Date>`, `<Open>`, etc.)
-- **Score Database**: SQLite with schema: `id`, `timestamp`, `channel_name`, `timeframe`, `score`, `change`, `momentum`, `price`, `created_at`
-- **Chart Rendering**: matplotlib (PNG output) + Chart.js in web templates for interactive visualization
-- **Parameter Grid**: Optimizer uses `itertools.product()` over parameter ranges; scales exponentially (mind the size)
+
+**Data Input:**
+- Only the combined .db format is supported. The required schema is:
+    - `id`, `timestamp`, `score_1m`, `score_5m`, `score_15m`, `score_60m`, `open`, `high`, `low`, `close`
+- No CSV, legacy score DB, or other formats are accepted.
+- Each row contains all price and score data for a single bar.
 
 ---
 
@@ -308,9 +322,9 @@ Use `get_data_file_path()`, `resolve_strategy_path()` helpers in app.py for reso
 
 ## Recommended Reading Order
 1. **README.md** – Project features and quick start
-2. **sources/STRATEGY_GUIDE.md** – Strategy authoring with examples
+2. **sources/STRATEGY_DEV_RULES.md** – Strategy development guidelines with examples
 3. **core/base_strategy.py** – Interface definition
-6. **core/backtester.py** – How trades are executed and metrics computed
-7. **sources/SCORE_DATA_INTEGRATION.md** – Score data integration patterns
+4. **core/backtester.py** – How trades are executed and metrics computed
+5. **core/score_loader.py** – Score data and combined DB loading patterns
 
 

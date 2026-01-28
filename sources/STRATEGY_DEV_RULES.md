@@ -1,17 +1,31 @@
 # Strategy Development Rules for AI Assistant
 
-**Last Updated:** January 20, 2026
+**Last Updated:** January 28, 2026
 **Purpose:** Guidelines for AI-assisted strategy development, testing, and optimization in the backtesting platform.
 
 ---
 
-## Core Architecture: Event-Driven Order Placement
+## Core Architecture: Event-Driven Order Placement with Unified Data Structure
 
 **Primary Mode: Event-Driven Execution**
-- Strategies override `on_bar(self, price_bars, scores_data)` method
+- Strategies override `on_bar(self, data)` method - receives unified OHLCV+score bars
+- Each bar contains: `timestamp`, `open`, `high`, `low`, `close`, `volume`, `score_1m`, `score_5m`, `score_15m`, `score_60m`
 - Place orders via `self.buy(quantity, reason)` and `self.sell_short(quantity, reason)`
 - Orders execute at **next bar's open** (realistic one-bar delay)
 - No look-ahead bias - only see data up to current bar
+
+**Unified Data Structure (January 28, 2026):**
+```python
+def on_bar(self, data: List[Dict[str, Any]]):
+    """Receives unified bars with OHLCV + embedded scores."""
+    current_bar = data[-1]  # Current bar
+    close = current_bar['close']
+    score_1m = current_bar.get('score_1m')  # Score directly in bar
+    
+    # Access previous bars for indicator calculation
+    if len(data) >= 20:
+        sma = sum(bar['close'] for bar in data[-20:]) / 20
+```
 
 **Order Execution Model:**
 ```python
@@ -111,17 +125,14 @@ self.sell_short(quantity=1, reason='EXIT', exit_type='')
 - Uses `core/` modules directly
 - Command-line interface for rapid iteration
 
-**Usage Example:**
+**Usage Example (ONLY supported format):**
 ```bash
 python scripts/backtest_standalone.py \
-  --strategy mnq_threshold_cross \
-  --data MNQ_1M.csv \
-  --scores discord_messages.db \
-  --channel mnq \
-  --capital 50000 \
-  --commission 0.0 \
-  --slippage 0 \
-  --position-size 3
+    --strategy mnq_threshold_cross \
+    --data combined_market_data.db \
+    --capital 50000 \
+    --commission 0.0 \
+    --slippage 0 \
 ```
 
 ### 2. Strategy File Structure
@@ -317,35 +328,23 @@ if self.position > 0:
 
 #### Score Data Usage Patterns
 
-**Score Data is Pre-Filtered:**
-- Backtester pre-filters `scores_data` to 1m timeframe ONCE
-- No need to filter again in strategy (massive performance improvement)
-- `scores_data` parameter contains ONLY 1m records
-
-**Detecting Score Crosses:**
-```python
-if self.position == 0 and scores_data and len(scores_data) >= 2:
-    # Get last 2 unique timestamps (handle multiple records per timestamp)
-    unique_timestamps = []
-    seen_timestamps = set()
-    for s in reversed(scores_data):
-        ts = s['timestamp']
-        if ts not in seen_timestamps:
-            unique_timestamps.append(s)
-            seen_timestamps.add(ts)
-        if len(unique_timestamps) >= 2:
-            break
-    
-    if len(unique_timestamps) >= 2:
-        current_score = unique_timestamps[0]['score']
-        previous_score = unique_timestamps[1]['score']
-        
-        crossed_up = previous_score <= 0 and current_score > 0
-        crossed_down = previous_score >= 0 and current_score < 0
-        
-        if crossed_up:
-            self.buy(quantity=3, reason='ENTRY')
-```
+**Combined DB Format (ONLY Supported):**
+- The system only accepts a single SQLite .db file as data input.
+- **Table:** `combined_market_data`
+- **Columns:**
+    - `id` (INTEGER, primary key)
+    - `timestamp` (DATETIME, required)
+    - `score_1m` (FLOAT, required)
+    - `score_5m` (FLOAT, required)
+    - `score_15m` (FLOAT, required)
+    - `score_60m` (FLOAT, required)
+    - `open` (FLOAT, required)
+    - `high` (FLOAT, required)
+    - `low` (FLOAT, required)
+    - `close` (FLOAT, required)
+- Each row contains all price and score data for a single bar.
+- The backtester extracts both price and score data from this table for all backtests and optimizations.
+- Strategies receive both `price_bars` and `scores_data` in `on_bar()` as before, but all data is sourced from this unified table.
 
 #### Session Management & Force-Close
 
@@ -510,9 +509,9 @@ class SimpleSMAStrategy(BaseStrategy):
 ### Phase 1: CLI Development Testing
 1. **Modify strategy file:** `app/strategies/<strategy>.py`
 2. **Run CLI test:**
-   ```bash
-   python scripts/backtest_standalone.py --strategy <strategy> --data MNQ_1M.csv
-   ```
+    ```bash
+    python scripts/backtest_standalone.py --strategy <strategy> --data combined_market_data.db
+    ```
 3. **Check results:** Total trades, WR%, RR, return, max DD
 4. **Iterate:** Adjust parameters, re-test via CLI
 
@@ -687,32 +686,22 @@ app/temp_results/              # Temporary web results for comparison
 
 ## Quick Reference: CLI Testing Commands
 
-**Basic backtest:**
+**Basic backtest (ONLY supported format):**
 ```bash
-python scripts/backtest_standalone.py --strategy mnq_threshold_cross --data MNQ_1M.csv
-```
-
-**With score data:**
-```bash
-python scripts/backtest_standalone.py \
-  --strategy mnq_threshold_cross \
-  --data MNQ_1M.csv \
-  --scores discord_messages.db \
-  --channel mnq
+python scripts/backtest_standalone.py --strategy mnq_threshold_cross --data combined_market_data.db
 ```
 
 **Custom parameters:**
 ```bash
 python scripts/backtest_standalone.py \
-  --strategy mnq_threshold_cross \
-  --data MNQ_1M.csv \
-  --capital 50000 \
-  --commission 0.0 \
-  --slippage 0 \
-  --position-size 3 \
-  --instrument futures \
-  --point-value 2.0 \
-  --tick-size 0.25
+    --strategy mnq_threshold_cross \
+    --data combined_market_data.db \
+    --capital 50000 \
+    --commission 0.0 \
+    --slippage 0 \
+    --instrument futures \
+    --point-value 2.0 \
+    --tick-size 0.25
 ```
 
 **Session filter test:**
