@@ -22,20 +22,58 @@
                 </a>
             </div>
             <ul class="navbar-nav">
-                <li><a href="{{ url_for('results.results_page') }}" class="nav-link {% if request.endpoint == 'results.results_page' %}active{% endif %}">Results</a></li>
-                <li class="nav-dropdown">
-                    <a href="#" class="nav-link {% if request.endpoint in ['data.data_management', 'strategies.strategy_management'] %}active{% endif %}">Setup ▾</a>
-                    <div class="dropdown-menu">
-                        <a href="{{ url_for('data.data_management') }}" class="dropdown-item">Data</a>
-                        <a href="{{ url_for('strategies.strategy_management') }}" class="dropdown-item">Strategies</a>
-                    </div>
+                <li>
+                    <a href="{{ url_for('results.results_page') }}" class="nav-link {% if request.endpoint == 'results.results_page' %}active{% endif %}">
+                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 13h14" />
+                                <path d="M3 9v4" />
+                                <path d="M7 6v7" />
+                                <path d="M11 4v9" />
+                                <path d="M15 2v11" />
+                            </svg>
+                        </span>
+                        Results
+                    </a>
                 </li>
-                <li class="nav-dropdown">
-                    <a href="#" class="nav-link {% if request.endpoint in ['backtest.backtest_page', 'optimize.optimize_page'] %}active{% endif %}">Testing ▾</a>
-                    <div class="dropdown-menu">
-                        <a href="{{ url_for('backtest.backtest_page') }}" class="dropdown-item">Backtest</a>
-                        <a href="{{ url_for('optimize.optimize_page') }}" class="dropdown-item">Optimize</a>
-                    </div>
+                <li>
+                    <a href="{{ url_for('data.data_management') }}" class="nav-link {% if request.endpoint == 'data.data_management' %}active{% endif %}">
+                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <ellipse cx="8" cy="3" rx="6" ry="2"></ellipse>
+                                <path d="M2 3v2c0 1.1 2.7 2 6 2s6-0.9 6-2V3"></path>
+                                <path d="M2 7v2c0 1.1 2.7 2 6 2s6-0.9 6-2V7"></path>
+                                <path d="M2 11v2c0 1.1 2.7 2 6 2s6-0.9 6-2v-2"></path>
+                            </svg>
+                        </span>
+                        Data
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('backtest.backtest_page') }}" class="nav-link {% if request.endpoint == 'backtest.backtest_page' %}active{% endif %}">
+                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="8" cy="8" r="6"></circle>
+                                <path d="M6.5 5.5v5l4-2.5-4-2.5z" fill="currentColor" stroke="none"></path>
+                            </svg>
+                        </span>
+                        Backtest
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('optimize.optimize_page') }}" class="nav-link {% if request.endpoint == 'optimize.optimize_page' %}active{% endif %}">
+                        <span class="nav-icon" aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-right:.5rem;">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M2 4h12" />
+                                <circle cx="4" cy="4" r="1" fill="currentColor" stroke="none"></circle>
+                                <path d="M2 8h12" />
+                                <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle>
+                                <path d="M2 12h12" />
+                                <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle>
+                            </svg>
+                        </span>
+                        Optimize
+                    </a>
                 </li>
             </ul>
         </div>
