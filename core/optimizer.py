@@ -410,7 +410,7 @@ class StrategyOptimizer:
         
         # Save strategy code if provided
         if strategy_code:
-            code_path = os.path.join(output_dir, 'strategy_code.py')
+            code_path = os.path.join(output_dir, 'strategy_code.txt')
             with open(code_path, 'w') as f:
                 f.write(strategy_code)
         

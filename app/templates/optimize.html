@@ -33,7 +33,6 @@
                             <option value="{{ file }}">{{ file }}</option>
                             {% endfor %}
                         </select>
-                        <span class="field-hint">Combined .db file with OHLC + scores (1m, 5m, 15m, 60m)</span>
                     </div>
                     <div class="form-group">
                         <label for="strategy" class="form-label-required">
@@ -44,24 +43,9 @@
                             <option value="{{ strategy }}">{{ strategy }}</option>
                             {% endfor %}
                         </select>
-                        <span class="field-hint">Choose which strategy to optimize</span>
                     </div>
                 </div>
-                <div class="form-row">
-                    <div class="form-group form-group-full">
-                        <label for="scoresFile" class="form-label">
-                            <span>Score Database</span>
-                            <span class="optional-badge">(Optional)</span>
-                        </label>
-                        <select id="scoresFile" class="form-input form-select">
-                            <option value="">None</option>
-                            {% for file in score_files %}
-                            <option value="{{ file }}">{{ file }}</option>
-                            {% endfor %}
-                        </select>
-                        <span class="field-hint">Optional external indicators or sentiment data</span>
-                    </div>
-                </div>
+                
             </div>
         </div>
 
