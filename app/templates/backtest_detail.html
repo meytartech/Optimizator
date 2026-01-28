@@ -565,6 +565,9 @@ async function rerunBacktest() {
 {% if '/' not in result_id %}
 <script>
 async function deleteBacktest() {
+    if (!confirm('Are you sure you want to delete this backtest?')) {
+        return;
+    }
     try {
         const res = await fetch('{{ url_for('results.delete_backtest_result', result_id=result_id) }}', {
             method: 'POST',
