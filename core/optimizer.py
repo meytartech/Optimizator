@@ -22,7 +22,7 @@ def _run_single_backtest(args):
     Instead, we pass the strategy file path and class name as strings, then reload
     the strategy module in the worker process using the same method as the web app.
     """
-    strategy_path, strategy_class_name, params, base_params, data, scores_data, initial_capital, commission, slippage_ticks, max_bars_back = args
+    strategy_path, strategy_class_name, params, base_params, data, initial_capital, commission, slippage_ticks, max_bars_back = args
     
     import importlib.util
     import os
@@ -44,7 +44,7 @@ def _run_single_backtest(args):
         max_bars_back=max_bars_back,
         verbose=False
     )
-    result = backtester.run(strategy, data, scores_data)
+    result = backtester.run(strategy, data)
     return {
         'parameters': params,
         'metrics': {
@@ -81,21 +81,20 @@ class StrategyOptimizer:
                  slippage_ticks: int = 0,
                  max_workers: int = 0,
                  max_bars_back: int = 100,
-                 scores_data: Optional[List[Dict[str, Any]]] = None,
                  base_params: Optional[Dict[str, Any]] = None,
                  strategy_path: Optional[str] = None):
         """Initialize optimizer.
         
         Args:
             strategy_class: Strategy class (not instance)
-            data: Historical price data for backtesting
+            data: Unified historical data with embedded scores
             param_ranges: Dict mapping param names to (min, max, step) tuples
             initial_capital: Starting capital for each run
             commission: Commission per trade
             slippage_ticks: Slippage in ticks
             max_workers: Number of parallel workers
             max_bars_back: Maximum bars to pass to on_bar (0 = all)
-            scores_data: Optional score/indicator data from database
+            base_params: Static params applied to every run (instrument specs, sizing, etc.)
             strategy_path: File path to strategy .py file (for multiprocessing)
         """
         self.strategy_class = strategy_class
@@ -111,7 +110,6 @@ class StrategyOptimizer:
             self.max_workers = min(multiprocessing.cpu_count(), 16)  # Cap at 16 to avoid resource exhaustion
         else:
             self.max_workers = max(1, min(max_workers, multiprocessing.cpu_count()))
-        self.scores_data = scores_data
         # Static params applied to every run (instrument specs, sizing, etc.)
         self.base_params = base_params or {}
     
@@ -171,7 +169,7 @@ class StrategyOptimizer:
         strategy_class_name = self.strategy_class.__name__
         
         backtest_args = [
-            (self.strategy_path, strategy_class_name, params, self.base_params, self.data, self.scores_data,
+            (self.strategy_path, strategy_class_name, params, self.base_params, self.data,
              self.initial_capital, self.commission, self.slippage_ticks, self.max_bars_back)
             for params in combinations
         ]
@@ -314,7 +312,7 @@ class StrategyOptimizer:
                 )
                 
                 # Run full backtest to get trades, equity curve, etc.
-                backtest_result = backtester.run(strategy, self.data, self.scores_data)
+                backtest_result = backtester.run(strategy, self.data)
                 
                 # Save individual backtest results (same format as normal backtests)
                 backtest_json = {
@@ -341,23 +339,7 @@ class StrategyOptimizer:
                 with open(results_path, 'w') as f:
                     json.dump(backtest_json, f, indent=2)
                 
-                # Save configuration
-                config_data = {
-                    'strategy': self.strategy_class.__name__,
-                    'parameters': params,
-                    'base_params': base_params or {},
-                    'rank': rank,
-                    'optimization_metric': results.get('optimization_metric'),
-                    'metric_value': result['metrics'].get(results.get('optimization_metric', 'total_return'))
-                }
-                
-                # Add run settings if provided
-                if run_settings:
-                    config_data.update(run_settings)
-                
-                config_path = os.path.join(rank_dir, 'config.json')
-                with open(config_path, 'w') as f:
-                    json.dump(config_data, f, indent=2)
+                # Note: config.json removed - configuration saved in results.json
                 
                 # Save strategy code
                 if strategy_code:

@@ -14,7 +14,6 @@ import importlib.util
 import csv
 import threading
 
-from core.data_loader import CSVDataLoader
 from core.backtester import GenericBacktester
 from core.score_loader import ScoreDataLoader
 from core.optimizer import StrategyOptimizer
@@ -228,84 +227,30 @@ def view_temp_backtest_result(temp_result_id):
     config = current_app.config
     result_dir = os.path.join(config['TEMP_RESULTS_FOLDER'], temp_result_id)
     results_file = os.path.join(result_dir, 'results.json')
-    config_file = os.path.join(result_dir, 'config.json')
 
     results = {}
     has_results = False
     if os.path.exists(results_file):
         with open(results_file, 'r') as f:
             results = json.load(f)
-        has_results = True
-    else:
-        if os.path.exists(config_file):
-            try:
-                with open(config_file, 'r') as cf:
-                    cfg = json.load(cf)
-                results = {
-                    'strategy': cfg.get('strategy', 'unknown'),
-                    'data_file': cfg.get('data_file', ''),
-                    'parameters': cfg.get('parameters', {}),
-                    'initial_capital': cfg.get('initial_capital', 100000),
-                    'commission': cfg.get('commission', 0),
-                    'slippage_ticks': cfg.get('slippage_ticks', 0),
-                    'instrument_type': cfg.get('instrument_type', 'stock'),
-                    'point_value': cfg.get('point_value', 1.0),
-                    'tick_size': cfg.get('tick_size', 0.01),
-                    'position_size': cfg.get('position_size', 1),
-                    'initial_capital': cfg.get('initial_capital', 100000),
-                    'final_equity': cfg.get('initial_capital', 100000),
-                    'total_return': 0.0,
-                    'win_rate': 0.0,
-                    'total_trades': 0,
-                    'winning_trades': 0,
-                    'losing_trades': 0,
-                    'avg_win': 0.0,
-                    'avg_loss': 0.0,
-                    'avg_rr': 0.0,
-                    'profit_factor': 0.0,
-                    'sharpe_ratio': 0.0,
-                    'max_drawdown': 0.0,
-                    'max_drawdown_points': 0.0,
-                    'realized_points': 0.0,
-                    'total_commissions': 0.0,
-                    'max_consecutive_wins': 0,
-                    'max_consecutive_losses': 0,
-                    'unique_entries': 0,
-                    'trades': [],
-                    'equity_curve': [],
-                    'session_stats': {},
-                    'exit_reason_stats': {},
-                }
-            except Exception:
-                results = {
-                    'initial_capital': 100000,
-                    'final_equity': 100000,
-                    'total_return': 0.0,
-                    'win_rate': 0.0,
-                    'total_trades': 0,
-                    'winning_trades': 0,
-                    'losing_trades': 0,
-                    'avg_win': 0.0,
-                    'avg_loss': 0.0,
-                    'avg_rr': 0.0,
-                    'profit_factor': 0.0,
-                    'sharpe_ratio': 0.0,
-                    'max_drawdown': 0.0,
-                    'max_drawdown_points': 0.0,
-                    'realized_points': 0.0,
-                    'total_commissions': 0.0,
-                    'max_consecutive_wins': 0,
-                    'max_consecutive_losses': 0,
-                    'unique_entries': 0,
-                    'trades': [],
-                    'equity_curve': [],
-                    'session_stats': {},
-                    'exit_reason_stats': {},
-                }
-        else:
-            results = {
-                'initial_capital': 100000,
-                'final_equity': 100000,
+        # Check if backtest has completed
+        has_results = results.get('status') != 'pending' and 'total_trades' in results
+        
+        # If still pending, extract config for display
+        if not has_results and 'config' in results:
+            cfg = results['config']
+            results.update({
+                'strategy': cfg.get('strategy', 'unknown'),
+                'data_file': cfg.get('data_file', ''),
+                'parameters': cfg.get('parameters', {}),
+                'initial_capital': cfg.get('initial_capital', 100000),
+                'commission': cfg.get('commission', 0),
+                'slippage_ticks': cfg.get('slippage_ticks', 0),
+                'instrument_type': cfg.get('instrument_type', 'stock'),
+                'point_value': cfg.get('point_value', 1.0),
+                'tick_size': cfg.get('tick_size', 0.01),
+                'position_size': cfg.get('position_size', 1),
+                'final_equity': cfg.get('initial_capital', 100000),
                 'total_return': 0.0,
                 'win_rate': 0.0,
                 'total_trades': 0,
@@ -327,7 +272,34 @@ def view_temp_backtest_result(temp_result_id):
                 'equity_curve': [],
                 'session_stats': {},
                 'exit_reason_stats': {},
-            }
+            })
+    else:
+        # No results file exists yet
+        results = {
+            'initial_capital': 100000,
+            'final_equity': 100000,
+            'total_return': 0.0,
+            'win_rate': 0.0,
+            'total_trades': 0,
+            'winning_trades': 0,
+            'losing_trades': 0,
+            'avg_win': 0.0,
+            'avg_loss': 0.0,
+            'avg_rr': 0.0,
+            'profit_factor': 0.0,
+            'sharpe_ratio': 0.0,
+            'max_drawdown': 0.0,
+            'max_drawdown_points': 0.0,
+            'realized_points': 0.0,
+            'total_commissions': 0.0,
+            'max_consecutive_wins': 0,
+            'max_consecutive_losses': 0,
+            'unique_entries': 0,
+            'trades': [],
+            'equity_curve': [],
+            'session_stats': {},
+            'exit_reason_stats': {},
+        }
     
     if 'exit_reason_stats' not in results and 'trades' in results:
         exit_reason_stats = {}
@@ -382,36 +354,28 @@ def get_trade_details(result_id, trade_index):
         entry_index = 0
         exit_index = 0
         
-        prices_file = os.path.join(result_dir, 'prices_data.json')
-        if os.path.exists(prices_file):
-            try:
-                with open(prices_file, 'r') as f:
-                    all_prices = json.load(f)
-                logger.info(f"Loaded prices from prices_data.json: {len(all_prices)} bars")
-            except Exception as e:
-                logger.warning(f"Failed to load prices_data.json: {e}")
-        
-        # Fallback: load from CSV if prices_data.json doesn't exist
-        if not all_prices:
-            data_file = results.get('data_file', '')
-            if data_file:
-                csv_paths = [
-                    os.path.join(current_app.config['UPLOAD_FOLDER'], data_file),
-                    os.path.join(os.path.dirname(os.path.dirname(current_app.config['UPLOAD_FOLDER'])), 'data', 'db', data_file),
-                ]
-                
-                for csv_path in csv_paths:
-                    if os.path.exists(csv_path):
-                        try:
-                            from core.data_loader import CSVDataLoader
-                            all_prices = CSVDataLoader.load_csv(csv_path)
-                            logger.info(f"Loaded prices from CSV fallback: {len(all_prices)} bars")
-                            break
-                        except Exception as e:
-                            logger.warning(f"Failed to load CSV fallback from {csv_path}: {e}")
+        # Load from combined .db file (prices_data.json no longer saved)
+        data_file = results.get('data_file', '')
+        if data_file:
+            db_path = get_data_file_path(data_file)
+            if os.path.exists(db_path) and ScoreDataLoader.is_combined_database(db_path):
+                try:
+                    # Load only the range needed for this trade (with buffer)
+                    entry_ts = trade.get('entry_timestamp', trade.get('entry_time', ''))
+                    exit_ts = trade.get('exit_timestamp', trade.get('exit_time', ''))
+                    all_prices = ScoreDataLoader.load_combined_db_range(db_path, entry_ts, exit_ts, buffer_bars=100)
+                    logger.info(f"Loaded {len(all_prices)} bars from .db for trade range")
+                except Exception as e:
+                    logger.warning(f"Failed to load from combined .db: {e}")
+                    # Fallback: load all data if range query fails
+                    try:
+                        all_prices = ScoreDataLoader.load_combined_db(db_path)
+                        logger.info(f"Loaded all {len(all_prices)} bars from .db (fallback)")
+                    except Exception as e2:
+                        logger.warning(f"Failed to load all data from .db: {e2}")
         
         if all_prices:
-            # Find entry/exit indices in prices data
+            # Find entry/exit indices in loaded data
             entry_ts = trade.get('entry_timestamp', trade.get('entry_time', ''))
             exit_ts = trade.get('exit_timestamp', trade.get('exit_time', ''))
             
@@ -432,57 +396,11 @@ def get_trade_details(result_id, trade_index):
             exit_index = exit_index - window_start
         else:
             prices_data = []
-        
-        # Load scores data if available
-        scores_data = {}
-        scores_file = os.path.join(result_dir, 'scores_data.json')
-        if os.path.exists(scores_file):
-            try:
-                with open(scores_file, 'r') as f:
-                    loaded_scores = json.load(f)
                 
-                # Ensure scores_data is a dict with timeframe keys
-                if isinstance(loaded_scores, dict):
-                    scores_data = loaded_scores
-                elif isinstance(loaded_scores, list) and loaded_scores:
-                    # Convert list format to dict format by looking for timeframe info
-                    # Try to organize by timeframe if available
-                    if all('timestamp' in item and 'score' in item for item in loaded_scores):
-                        # Default to '1m' if no timeframe specified
-                        scores_data = {'1m': loaded_scores}
-                    else:
-                        scores_data = {}
-                
-                # Filter scores to only window timeframe
-                if scores_data and prices_data:
-                    window_start_ts = prices_data[0].get('timestamp') if prices_data else None
-                    window_end_ts = prices_data[-1].get('timestamp') if prices_data else None
-                    
-                    filtered_scores = {}
-                    for timeframe, scores_list in scores_data.items():
-                        if isinstance(scores_list, list):
-                            # Filter to only scores within the price window
-                            filtered = [
-                                s for s in scores_list
-                                if window_start_ts and window_end_ts and 
-                                   window_start_ts <= s.get('timestamp', '') <= window_end_ts
-                            ]
-                            if filtered:
-                                filtered_scores[timeframe] = filtered
-                    
-                    scores_data = filtered_scores if filtered_scores else {}
-                
-                # if scores_data:
-                #     logger.info(f"Loaded scores: {list(scores_data.keys())}")
-                
-            except Exception as e:
-                logger.warning(f"Failed to load scores_data.json: {e}")
-        
         return jsonify({
             'success': True,
             'trade': trade,
-            'prices_data': prices_data,
-            'scores_data': scores_data,
+            'data': prices_data,
             'entry_index': entry_index,
             'exit_index': exit_index
         })
@@ -807,63 +725,19 @@ def _execute_optimization_job(job_id: str, config: dict):
             logger.info(f"Strategy: {config['strategy']}")
             logger.info(f"Data file: {config['data_file']}")
             
-            # Load data
+            # Load combined .db (only supported format)
             data_file = config['data_file']
             data_path = get_data_file_path(data_file)
-            data = CSVDataLoader.load_csv(data_path)
-            logger.info(f"Price data loaded: {len(data)} rows")
+            if not (data_path.lower().endswith('.db') and ScoreDataLoader.is_combined_database(data_path)):
+                raise ValueError("Only combined .db files (OHLC + multi-timeframe scores) are supported for optimization")
+
+            unified_data = ScoreDataLoader.load_combined_db(
+                data_path,
+                channel_name=config.get('channel_name')
+            )
+            logger.info(f"Combined data loaded: {len(unified_data)} unified bars with embedded OHLC+scores")
+            
             job_manager.update_job(job_id, progress=20)
-            
-            # Load optional scores
-            scores_data = None
-            scores_file = config.get('scores_file')
-            
-            if scores_file and scores_file.strip():
-                logger.info(f"Attempting to load scores from: {scores_file}")
-                db_paths = [
-                    os.path.join(flask_app.config['UPLOAD_FOLDER'], scores_file),
-                    os.path.join(os.path.dirname(os.path.dirname(flask_app.config['UPLOAD_FOLDER'])), 'db', scores_file),
-                ]
-                
-                scores_path = None
-                for path in db_paths:
-                    if os.path.exists(path):
-                        scores_path = path
-                        logger.info(f"✓ Found at: {scores_path}")
-                        break
-                
-                if scores_path:
-                    is_valid = ScoreDataLoader.validate_database(scores_path)
-                    
-                    if is_valid:
-                        try:
-                            start_date_raw = data[0].get('timestamp') if data else None
-                            end_date_raw = data[-1].get('timestamp') if data else None
-                            
-                            start_date = None
-                            end_date = None
-                            if start_date_raw:
-                                try:
-                                    dt = datetime.strptime(start_date_raw, '%d/%m/%Y %H:%M:%S')
-                                    start_date = dt.strftime('%Y-%m-%dT%H:%M:%S')
-                                except:
-                                    pass
-                            if end_date_raw:
-                                try:
-                                    dt = datetime.strptime(end_date_raw, '%d/%m/%Y %H:%M:%S')
-                                    end_date = dt.strftime('%Y-%m-%dT%H:%M:%S')
-                                except:
-                                    pass
-                            
-                            scores_data = ScoreDataLoader.load_scores(
-                                scores_path,
-                                channel_name=config.get('channel_name'),
-                                start_date=start_date,
-                                end_date=end_date
-                            )
-                            logger.info(f"✓ Scores data loaded: {len(scores_data)} records")
-                        except Exception as score_err:
-                            logger.error(f"Failed to load scores: {score_err}")
             
             # Load strategy
             strategy_name = config['strategy']
@@ -892,14 +766,13 @@ def _execute_optimization_job(job_id: str, config: dict):
             # Run optimization
             optimizer = StrategyOptimizer(
                 strategy_class=strategy_class,
-                data=data,
+                data=unified_data,
                 param_ranges=param_ranges,
                 initial_capital=config.get('initial_capital', 100000),
                 commission=config.get('commission', 0),
                 slippage_ticks=config.get('slippage_ticks', 0),
                 max_workers=config.get('max_workers', 4),
                 max_bars_back=config.get('max_bars_back', 100),
-                scores_data=scores_data,
                 base_params=base_params,
                 strategy_path=strategy_path
             )
@@ -931,7 +804,6 @@ def _execute_optimization_job(job_id: str, config: dict):
                 'commission': config.get('commission', 0),
                 'slippage_ticks': config.get('slippage_ticks', 0),
                 'max_workers': config.get('max_workers', 4),
-                'scores_file': config.get('scores_file'),
                 'channel_name': config.get('channel_name'),
                 'instrument_type': base_params.get('instrument_type'),
                 'position_size': base_params.get('position_size'),

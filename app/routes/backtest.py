@@ -11,11 +11,10 @@ import logging
 import csv
 import queue
 
-from core.data_loader import CSVDataLoader
 from core.backtester import GenericBacktester
 from core.score_loader import ScoreDataLoader
 from core.equity_plotter import EquityPlotter
-from .data import list_data_files, get_data_file_path, list_score_files
+from .data import list_data_files, get_data_file_path
 from .strategies import list_strategies, resolve_strategy_path
 
 logger = logging.getLogger(__name__)
@@ -46,9 +45,8 @@ def backtest_page():
     """Backtest configuration and runner page."""
     data_files = list_data_files()
     strategies = list_strategies()
-    score_files = list_score_files()
     
-    return render_template('backtest.html', data_files=data_files, strategies=strategies, score_files=score_files)
+    return render_template('backtest.html', data_files=data_files, strategies=strategies)
 
 
 @bp.route('/backtest/prepare', methods=['POST'])
@@ -93,9 +91,10 @@ def prepare_live_backtest():
         temp_dir = os.path.join(temp_results_folder, folder_name)
         os.makedirs(temp_dir, exist_ok=True)
 
-        # Persist config to temp dir for the execute step
-        with open(os.path.join(temp_dir, 'config.json'), 'w', encoding='utf-8') as f:
-            json.dump(sanitized_config, f, indent=2)
+        # Store config in results.json (will be updated when backtest completes)
+        initial_results = {'config': sanitized_config, 'status': 'pending'}
+        with open(os.path.join(temp_dir, 'results.json'), 'w', encoding='utf-8') as f:
+            json.dump(initial_results, f, indent=2)
 
         return jsonify({'success': True, 'temp_result_id': folder_name})
     except Exception as e:
@@ -112,12 +111,13 @@ def execute_live_backtest(temp_result_id):
     """
     try:
         temp_dir = os.path.join(current_app.config['TEMP_RESULTS_FOLDER'], temp_result_id)
-        config_path = os.path.join(temp_dir, 'config.json')
-        if not os.path.exists(config_path):
+        results_path = os.path.join(temp_dir, 'results.json')
+        if not os.path.exists(results_path):
             return jsonify({'error': 'Temp result not found'}), 404
 
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        with open(results_path, 'r', encoding='utf-8') as f:
+            initial_data = json.load(f)
+            config = initial_data.get('config', {})
 
         def generate():
             """Generator function that yields log messages and final result."""
@@ -144,76 +144,25 @@ def execute_live_backtest(temp_result_id):
                 while not log_queue.empty():
                     yield f"data: {json.dumps({'type': 'log', 'message': log_queue.get()})}\n\n"
                 
-                # Load price data
+                # Load price data (detect if combined .db or CSV)
                 data_file = config['data_file']
                 data_path = get_data_file_path(data_file)
                 logger.info(f"Loading price data from: {data_path}")
-                data = CSVDataLoader.load_csv(data_path)
-                logger.info(f"Price data loaded: {len(data)} rows")
                 
-                while not log_queue.empty():
-                    yield f"data: {json.dumps({'type': 'log', 'message': log_queue.get()})}\n\n"
+                # Load combined .db format (OHLC + scores together)
+                if not data_path.lower().endswith('.db') or not ScoreDataLoader.is_combined_database(data_path):
+                    logger.error(f"Invalid data file: {data_file}. Only combined .db files (with OHLC + scores) are supported.")
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid data file format. Expected combined .db file with OHLC and score data.'})}\n\n"
+                    raise ValueError("Only combined .db files are supported")
                 
-                # Load optional scores data
-                scores_data = None
-                scores_file = config.get('scores_file')
-                
-                if scores_file and scores_file.strip():
-                    logger.info(f"Attempting to load scores from: {scores_file}")
-                    db_paths = [
-                        os.path.join(current_app.config['UPLOAD_FOLDER'], scores_file),
-                        os.path.join(os.path.dirname(os.path.dirname(current_app.config['UPLOAD_FOLDER'])), 'db', scores_file),
-                    ]
-                    
-                    scores_path = None
-                    for path in db_paths:
-                        if os.path.exists(path):
-                            scores_path = path
-                            logger.info(f"Found scores at: {scores_path}")
-                            break
-                    
-                    if scores_path:
-                        is_valid = ScoreDataLoader.validate_database(scores_path)
-                        
-                        if is_valid:
-                            try:
-                                start_date_raw = data[0].get('timestamp') if data else None
-                                end_date_raw = data[-1].get('timestamp') if data else None
-                                
-                                start_date = None
-                                end_date = None
-                                if start_date_raw:
-                                    try:
-                                        dt = datetime.strptime(start_date_raw, '%d/%m/%Y %H:%M:%S')
-                                        start_date = dt.strftime('%Y-%m-%dT%H:%M:%S')
-                                    except:
-                                        pass
-                                if end_date_raw:
-                                    try:
-                                        dt = datetime.strptime(end_date_raw, '%d/%m/%Y %H:%M:%S')
-                                        end_date = dt.strftime('%Y-%m-%dT%H:%M:%S')
-                                    except:
-                                        pass
-                                
-                                scores_data = ScoreDataLoader.load_scores(
-                                    scores_path,
-                                    channel_name=config.get('channel_name'),
-                                    start_date=start_date,
-                                    end_date=end_date
-                                )
-                                logger.info(f"Scores data loaded: {len(scores_data)} records")
-                                
-                                # Merge score data into price bars by timestamp for event-driven on_bar() execution
-                                if scores_data:
-                                    score_map = {s.get('timestamp', ''): s for s in scores_data}
-                                    for bar in data:
-                                        if bar['timestamp'] in score_map:
-                                            bar['score'] = score_map[bar['timestamp']].get('score', 0.0)
-                                        else:
-                                            bar['score'] = 0.0
-                                    logger.info(f"Merged {len([d for d in data if 'score' in d])} bars with score data")
-                            except Exception as score_err:
-                                logger.error(f"Failed to load scores: {score_err}")
+                logger.info("Loading combined .db format (OHLC + scores together)")
+                try:
+                    data = ScoreDataLoader.load_combined_db(data_path)
+                    logger.info(f"Combined data loaded: {len(data)} unified bars with embedded OHLC+scores")
+                except Exception as e:
+                    logger.error(f"Failed to load combined .db: {e}")
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'Failed to load data: {str(e)}'})}\n\n"
+                    raise
                 
                 while not log_queue.empty():
                     yield f"data: {json.dumps({'type': 'log', 'message': log_queue.get()})}\n\n"
@@ -258,11 +207,7 @@ def execute_live_backtest(temp_result_id):
                     except:
                         pass
                 
-                logger.info(f"Running backtest with {len(data)} price bars")
-                if scores_data:
-                    logger.info(f"Passing {len(scores_data)} score records to strategy")
-                else:
-                    logger.info("No score data (price-only backtest)")
+                logger.info(f"Running backtest with {len(data)} unified bars (OHLCV + scores)")
                 
                 while not log_queue.empty():
                     yield f"data: {json.dumps({'type': 'log', 'message': log_queue.get()})}\n\n"
@@ -275,7 +220,7 @@ def execute_live_backtest(temp_result_id):
                     verbose=False
                 )
                 
-                result = backtester.run(strategy, data, scores_data)
+                result = backtester.run(strategy, data)
                 
                 logger.info("Backtest completed successfully!")
                 logger.info(f"Win Rate: {result.win_rate:.2f}%")
@@ -287,6 +232,7 @@ def execute_live_backtest(temp_result_id):
                 
                 # Create results data structure
                 results_data = {
+                    'data_file': config.get('data_file', ''),  # Store .db path for later loading
                     'parameters': config.get('parameters', {}),
                     'strategy_setup_params': strategy_setup_params,
                     'point_value': config.get('point_value', 1.0),
@@ -309,33 +255,8 @@ def execute_live_backtest(temp_result_id):
                 with open(os.path.join(temp_dir, 'results.json'), 'w', encoding='utf-8') as f:
                     json.dump(results_data, f, indent=2, default=str)
                 
-                # Save prices data for trade viewer
-                try:
-                    with open(os.path.join(temp_dir, 'prices_data.json'), 'w', encoding='utf-8') as f:
-                        json.dump(data, f, indent=2, default=str)
-                    logger.info(f"Prices data saved: {len(data)} bars")
-                except Exception as prices_err:
-                    logger.warning(f"Failed to save prices_data.json: {prices_err}")
-                
-                # Save scores data if available
-                if scores_data:
-                    try:
-                        # Organize scores by timeframe
-                        scores_by_tf = {}
-                        if isinstance(scores_data, list):
-                            for score in scores_data:
-                                tf = score.get('timeframe', '1m')
-                                if tf not in scores_by_tf:
-                                    scores_by_tf[tf] = []
-                                scores_by_tf[tf].append(score)
-                        elif isinstance(scores_data, dict):
-                            scores_by_tf = scores_data
-                        
-                        with open(os.path.join(temp_dir, 'scores_data.json'), 'w', encoding='utf-8') as f:
-                            json.dump(scores_by_tf, f, indent=2, default=str)
-                        logger.info(f"Scores data saved: {sum(len(v) for v in scores_by_tf.values())} records across {len(scores_by_tf)} timeframes")
-                    except Exception as scores_err:
-                        logger.warning(f"Failed to save scores_data.json: {scores_err}")
+                # Note: Price and score data not saved to reduce storage
+                # Load from original .db file when needed (path stored in results.json)
                 
                 # Save trades CSV
                 try:
@@ -368,14 +289,11 @@ def execute_live_backtest(temp_result_id):
                 except Exception as csv_err:
                     logger.error(f"Failed to save trades CSV: {csv_err}")
                 
-                # Save strategy code and config
+                # Save strategy code (config data is already in results.json)
                 with open(strategy_path, 'r', encoding='utf-8') as f:
                     strategy_code = f.read()
                 with open(os.path.join(temp_dir, 'strategy_code.txt'), 'w', encoding='utf-8') as f:
                     f.write(strategy_code)
-                
-                with open(os.path.join(temp_dir, 'config.json'), 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2)
                 
                 # Generate equity curve
                 try:
@@ -425,14 +343,16 @@ def rerun_backtest(temp_result_id):
         if not os.path.exists(temp_dir):
             return jsonify({'error': 'Temp result not found'}), 404
         
-        # Load config from temp results
-        with open(os.path.join(temp_dir, 'config.json'), 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        # Load config from results.json
+        results_path = os.path.join(temp_dir, 'results.json')
+        with open(results_path, 'r', encoding='utf-8') as f:
+            existing_data = json.load(f)
+            config = existing_data.get('config', {})
         
-        # Clean up old results before rerunning
+        # Clean up old results before rerunning (keep results.json with config)
         import shutil
         for filename in os.listdir(temp_dir):
-            if filename not in ['config.json']:
+            if filename not in ['results.json']:  # Keep results.json for config
                 filepath = os.path.join(temp_dir, filename)
                 if os.path.isdir(filepath):
                     shutil.rmtree(filepath, ignore_errors=True)

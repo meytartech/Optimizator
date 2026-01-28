@@ -144,7 +144,7 @@ def on_bar(self, price_bars, scores_data=None):
 |------|---------|
 | `app/app.py` | Main Flask app; routes for upload, backtest, optimize, results |
 | `app/strategies/` | User strategy files (e.g., `simple_ma_strategy.py`, `mnq_strategy.py`) |
-| `app/results/backtests/` | Backtest outputs: `results.json`, `config.json`, `strategy_code.txt`, `equity_curve.png` |
+| `app/results/backtests/` | Backtest outputs: `results.json`, `strategy_code.txt`, `equity_curve.png`, `trades.csv` |
 | `app/results/optimizations/` | Optimization outputs with best parameter sets |
 | `app/db/` | CSV data files uploaded via web UI |
 | `app/templates/` | Flask Jinja2 templates for web UI pages |
@@ -208,6 +208,17 @@ python run_server.py
 - **avg_trade**: total_return / number_of_trades (average PnL per trade)
 - **consecutive_wins**: longest streak of winning trades
 - **consecutive_losses**: longest streak of losing trades
+
+### Equity Curve Format
+The equity curve array in `results.json` tracks position state at each bar:
+```json
+{
+  "timestamp": "2024-01-15 09:35:00",
+  "equity": 50350.00,
+  "tradeDirection": 1  // 1=long, -1=short, 0=flat
+}
+```
+**Note**: Prior to January 28, 2026, this field was named `position` - now standardized as `tradeDirection`.
 
 ### Instrument Types
 Configure in strategy `setup()` via `self.params['instrument_type']`:
@@ -274,11 +285,11 @@ python scripts/test_csv_format.py <file.csv>
 - Validate timestamp matching manually: signal timestamps must exactly match bar timestamps
 
 ### Backtest Result Inspection
-- **Results**: Check `app/results/backtests/<timestamp>_<strategy>/results.json` for metrics
+- **Results**: Check `app/results/backtests/<timestamp>_<strategy>/results.json` for metrics and configuration
 - **Equity curve**: View `equity_curve.png` in results folder (matplotlib-generated PNG)
 - **Strategy code**: Review `strategy_code.txt` to confirm which code was executed
-- **Configuration**: Check `config.json` for backtest parameters and settings
-- **Trades list**: Review trades list in JSON for entry/exit timestamps, reasons, and PnL
+- **Trades list**: Review `trades.csv` for entry/exit timestamps, reasons, and PnL
+- **Data source**: Results include `data_file` path to original .db for dynamic loading
 
 ---
 ## Timezone & Session Definitions
@@ -305,6 +316,12 @@ python scripts/test_csv_format.py <file.csv>
     - `id`, `timestamp`, `score_1m`, `score_5m`, `score_15m`, `score_60m`, `open`, `high`, `low`, `close`
 - No CSV, legacy score DB, or other formats are accepted.
 - Each row contains all price and score data for a single bar.
+
+**Data Loading Patterns:**
+- **Full Dataset**: `ScoreDataLoader.load_combined_db(db_path)` - Load entire dataset for backtests
+- **Date Range**: `ScoreDataLoader.load_combined_db_range(db_path, start_timestamp, end_timestamp, buffer_bars=50)` - Load specific date range with context buffer for trade viewer
+- **Storage**: Backtest results include `data_file` path to .db; no prices_data.json saved (eliminates redundancy)
+- **Trade Viewer**: Dynamically loads data from .db using date range query instead of storing full dataset
 
 ---
 

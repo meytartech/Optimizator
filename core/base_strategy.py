@@ -101,31 +101,25 @@ class BaseStrategy(ABC):
         """Initialize strategy-specific variables. Override in subclass."""
         pass
 
-    def on_bar(self, data: List[Dict[str, Any]], scores_data: Optional[List[Dict[str, Any]]] = None):
+    def on_bar(self, data: List[Dict[str, Any]]):
         """Called on every bar with available data up to that point.
         
         This is the main entry point for event-driven strategy logic.
         The strategy only sees data up to the current bar (no look-ahead).
         
         Args:
-            data: List of OHLCV bars up to and including current bar
-            scores_data: Optional list of score records up to current timestamp
+            data: List of bars up to and including current bar
         
         Example:
-            def on_bar(self, data, scores_data=None):
+            def on_bar(self, data):
                 if len(data) < 20:
                     return
                 
                 current_bar = data[-1]
                 close = current_bar['close']
-                
+                score_1m = current_bar.get('score_1m', 0)
                 # Calculate indicators using only data up to current bar
                 sma = sum(bar['close'] for bar in data[-20:]) / 20
-                
-                # Optional: Use score data if available
-                if scores_data:
-                    current_score = scores_data[-1].get('score', 0)
-                
                 # Check position and place orders
                 if close > sma and self.engine.position == 0:
                     self.buy(quantity=1)

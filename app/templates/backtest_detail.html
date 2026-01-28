@@ -655,6 +655,31 @@ async function saveDescription() {
         }
     }
 }
+// Format timestamp as dd-mm-yy hh:mm
+    function formatTimestamp(ts) {
+        if (!ts) return '';
+        // Try to match yyyy-mm-dd hh:mm:ss or yyyy-mm-dd hh:mm:ss.SSSSSS
+        const match = ts.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+        if (match) {
+            const day = match[3];
+            const month = match[2];
+            const year = match[1].slice(2);
+            const hour = match[4];
+            const min = match[5];
+            return `${day}-${month}-${year} ${hour}:${min}`;
+        }
+        // Try to match dd/mm/yyyy hh:mm:ss
+        const match2 = ts.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+        if (match2) {
+            const day = match2[1].padStart(2, '0');
+            const month = match2[2].padStart(2, '0');
+            const year = match2[3].slice(2);
+            const hour = match2[4].padStart(2, '0');
+            const min = match2[5];
+            return `${day}-${month}-${year} ${hour}:${min}`;
+        }
+        return ts;
+    }
 
 function shareResults() {
     const shareBtn = document.getElementById('shareBtn');
@@ -739,12 +764,13 @@ function formatTrade(trade, index) {
     const direction = trade.direction == 1 ? 'LONG' : 'SHORT';
     const pnl = parseFloat(trade.pnl) || 0;
     const isWin = pnl > 0;
+
     return {
         // index is 1-based for display; source_index preserves the 0-based position for API lookups
         index: index + 1,
         source_index: index,
-        entry_time: trade.entry_time || '',
-        exit_time: trade.exit_time || '',
+        entry_time: formatTimestamp(trade.entry_time || ''),
+        exit_time: formatTimestamp(trade.exit_time || ''),
         direction: direction,
         entry_price: parseFloat(trade.entry_price) || 0,
         exit_price: parseFloat(trade.exit_price) || 0,
@@ -945,8 +971,7 @@ function openTradeViewer(trade) {
             }
             
             const rawTrade = data.trade;
-            const pricesData = data.prices_data || [];
-            const scoresData = data.scores_data || {};
+            const pricesData = data.data || [];
             const entryRelativeIdx = data.entry_index;
             const exitRelativeIdx = data.exit_index;
 
@@ -997,7 +1022,7 @@ function openTradeViewer(trade) {
             document.getElementById('viewerTradeBadge').style.background = directionColor;
             document.getElementById('viewerTradeTitle').textContent = `${direction} Trade`;
             document.getElementById('viewerTradeTitle').style.color = directionColor;
-            document.getElementById('viewerTradeSubtitle').textContent = `Entry: ${rawTrade.entry_time} → Exit: ${rawTrade.exit_time}`;
+            document.getElementById('viewerTradeSubtitle').textContent = `Entry: ${formatTimestamp(rawTrade.entry_time)} → Exit: ${formatTimestamp(rawTrade.exit_time)}`;
             
             // Calculate trade duration
             let durationText = 'N/A';
@@ -1031,13 +1056,7 @@ function openTradeViewer(trade) {
             
             // Render chart with fetched data
             renderTradeChart(rawTrade, pricesData, direction, entryRelativeIdx, exitRelativeIdx);
-            
-            // Render scores chart if data available
-            if (Object.keys(scoresData).length > 0) {
-                renderScoresChart(scoresData, pricesData);
-            } else {
-                document.getElementById('tradeScoresContainer').innerHTML = '';
-            }
+            renderScoresChart(pricesData);
         })
         .catch(error => {
             console.error('Failed to load trade data:', error);
@@ -1303,87 +1322,57 @@ const SCORE_WIDTHS = {
     '60m': 5
 };
 
-function renderScoresChart(scoresData, pricesData) {
+function renderScoresChart(pricesData) {
     const container = document.getElementById('tradeScoresContainer');
-    
-    if (!scoresData || Object.keys(scoresData).length === 0) {
+    if (!pricesData || pricesData.length === 0) {
         container.innerHTML = '';
         return;
     }
-    
+
     // Force crosshair cursor for the container
     container.style.cursor = 'crosshair';
-    
-    // Create timestamp index for prices (Date objects)
-    const priceTimestamps = pricesData.map(bar => parseTimestamp(bar.timestamp));
 
-    // Build traces for each timeframe
+    // Prepare traces for each score timeframe
+    const timeframes = [
+        { key: 'score_1m', label: '1m', color: SCORE_COLORS['1m'], width: SCORE_WIDTHS['1m'] },
+        { key: 'score_5m', label: '5m', color: SCORE_COLORS['5m'], width: SCORE_WIDTHS['5m'] },
+        { key: 'score_15m', label: '15m', color: SCORE_COLORS['15m'], width: SCORE_WIDTHS['15m'] },
+        { key: 'score_60m', label: '60m', color: SCORE_COLORS['60m'], width: SCORE_WIDTHS['60m'] }
+    ];
+
     const traces = [];
-    const timeframeConfig = {
-        '1m': { color: SCORE_COLORS['1m'], width: SCORE_WIDTHS['1m'], name: '1m' },
-        '5m': { color: SCORE_COLORS['5m'], width: SCORE_WIDTHS['5m'], name: '5m' },
-        '15m': { color: SCORE_COLORS['15m'], width: SCORE_WIDTHS['15m'], name: '15m' },
-        '60m': { color: SCORE_COLORS['60m'], width: SCORE_WIDTHS['60m'], name: '60m' }
-    };
-    
-    Object.keys(timeframeConfig).forEach(timeframe => {
-        if (scoresData[timeframe] && scoresData[timeframe].length > 0) {
-            const scores = scoresData[timeframe];
-            const config = timeframeConfig[timeframe];
-            
-            // Sort scores by time
-            scores.sort((a, b) => parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp));
-            
-            // Forward fill scores to match price timeline
-            const xData = [];
-            const yData = [];
-            
-            let lastScore = null;
-            let scoreIdx = 0;
-            
-            priceTimestamps.forEach(pt => {
-                if (!pt) return;
-                
-                // Advance scoreIdx to find the latest score <= pt
-                while (scoreIdx < scores.length) {
-                    const st = parseTimestamp(scores[scoreIdx].timestamp);
-                    if (st && st <= pt) {
-                        lastScore = scores[scoreIdx].score;
-                        scoreIdx++;
-                    } else {
-                        break;
-                    }
-                }
-                
-                // If we have a score, add it
-                if (lastScore !== null) {
-                    xData.push(pt);
-                    yData.push(lastScore);
-                }
-            });
-            
-            if (xData.length > 0) {
-                traces.push({
-                    x: xData,
-                    y: yData,
-                    mode: 'lines',
-                    name: config.name,
-                    line: {
-                        color: config.color,
-                        width: config.width,
-                        shape: 'hv' // Step line for clearer state changes
-                    },
-                    hovertemplate: `%{y:.2f}<extra></extra>`
-                });
+    timeframes.forEach(tf => {
+        const x = [];
+        const y = [];
+        pricesData.forEach(bar => {
+            const ts = parseTimestamp(bar.timestamp);
+            const score = bar[tf.key];
+            if (ts && typeof score === 'number') {
+                x.push(ts);
+                y.push(score);
             }
+        });
+        if (x.length > 0) {
+            traces.push({
+                x: x,
+                y: y,
+                mode: 'lines',
+                name: tf.label,
+                line: {
+                    color: tf.color,
+                    width: tf.width,
+                    shape: 'hv'
+                },
+                hovertemplate: `%{y:.2f}<extra></extra>`
+            });
         }
     });
-    
+
     if (traces.length === 0) {
         container.innerHTML = '<div style="padding: 20px; color: var(--text-muted); text-align: center;">No scores data available</div>';
         return;
     }
-    
+
     const layout = {
         title: {
             text: 'Scores Timeline',
@@ -1445,13 +1434,13 @@ function renderScoresChart(scoresData, pricesData) {
             namelength: -1
         }
     };
-    
+
     const config = {
         responsive: true,
         displayModeBar: false,
         displaylogo: false
     };
-    
+
     Plotly.newPlot('tradeScoresContainer', traces, layout, config).then(attachChartSyncHandlers);
 }
 

@@ -77,8 +77,6 @@ class CSVDataLoader:
                         cleaned_row['low'] = cleaned_row.get('price', cleaned_row.get('close', 0.0))
                     if 'close' not in cleaned_row:
                         cleaned_row['close'] = cleaned_row.get('price', 0.0)
-                    if 'volume' not in cleaned_row:
-                        cleaned_row['volume'] = 0
                     
                     # Add price field for compatibility
                     cleaned_row['price'] = cleaned_row.get('close', cleaned_row.get('price', 0.0))
@@ -124,8 +122,6 @@ class CSVDataLoader:
                         normalized['low'] = normalized.get('price', normalized.get('close', 0.0))
                     if 'close' not in normalized:
                         normalized['close'] = normalized.get('price', 0.0)
-                    if 'volume' not in normalized:
-                        normalized['volume'] = 0
                     
                     # Add price for compatibility
                     normalized['price'] = normalized.get('close', normalized.get('price', 0.0))

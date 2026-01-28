@@ -11,9 +11,8 @@ import importlib.util
 import logging
 import threading
 
-from core.data_loader import CSVDataLoader
 from core.score_loader import ScoreDataLoader
-from .data import list_data_files, get_data_file_path, list_score_files
+from .data import list_data_files, get_data_file_path
 from .strategies import list_strategies, resolve_strategy_path
 
 logger = logging.getLogger(__name__)
@@ -38,9 +37,8 @@ def optimize_page():
     """Optimization configuration and runner page."""
     data_files = list_data_files()
     strategies = list_strategies()
-    score_files = list_score_files()
     
-    return render_template('optimize.html', data_files=data_files, strategies=strategies, score_files=score_files)
+    return render_template('optimize.html', data_files=data_files, strategies=strategies)
 
 
 @bp.route('/optimize/get_params/<strategy_name>')
@@ -73,6 +71,13 @@ def run_optimization():
         
         config = request.json
         job_manager = current_app.job_manager
+
+        # Validate data file: only combined .db is supported
+        data_file = config.get('data_file')
+        data_path = get_data_file_path(data_file)
+        if not data_file or not data_path.lower().endswith('.db') or not ScoreDataLoader.is_combined_database(data_path):
+            logger.error(f"Invalid data file for optimization: {data_file}. Only combined .db files are supported.")
+            return jsonify({'error': 'Only combined .db files are supported'}), 400
         
         # Create job
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

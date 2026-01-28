@@ -9,7 +9,7 @@
 
 **Primary Mode: Event-Driven Execution**
 - Strategies override `on_bar(self, data)` method - receives unified OHLCV+score bars
-- Each bar contains: `timestamp`, `open`, `high`, `low`, `close`, `volume`, `score_1m`, `score_5m`, `score_15m`, `score_60m`
+- Each bar contains: `timestamp`, `open`, `high`, `low`, `close`, `score_1m`, `score_5m`, `score_15m`, `score_60m`
 - Place orders via `self.buy(quantity, reason)` and `self.sell_short(quantity, reason)`
 - Orders execute at **next bar's open** (realistic one-bar delay)
 - No look-ahead bias - only see data up to current bar
@@ -154,24 +154,24 @@ class MyStrategy(BaseStrategy):
         self._entry_price = None
         self._position_direction = 0  # 1=long, -1=short, 0=flat
         
-    def on_bar(self, price_bars: List[Dict[str, Any]], scores_data: Optional[List[Dict[str, Any]]] = None):
+    def on_bar(self, data: List[Dict[str, Any]]):
         """Event-driven logic called on every bar.
         
         Args:
-            price_bars: OHLCV bars up to current timestamp (use price_bars[-1] for current)
-            scores_data: Optional score records up to current timestamp (pre-filtered to 1m)
+            data: Combined OHLCV+score bars up to current timestamp
         """
         # 1. Guard: Need enough data
-        if len(price_bars) < self.sma_period:
+        if len(data) < self.sma_period:
             return
             
-        # 2. Get current bar
-        current_bar = price_bars[-1]
+        # 2. Get current bar (contains OHLC + score_1m, score_5m, score_15m, score_60m)
+        current_bar = data[-1]
         close = current_bar['close']
         timestamp = current_bar['timestamp']
+        score_1m = current_bar.get('score_1m')  # Access score directly from bar
         
         # 3. Calculate indicators on available data (NO LOOK-AHEAD)
-        sma = sum(bar['close'] for bar in price_bars[-self.sma_period:]) / self.sma_period
+        sma = sum(bar['close'] for bar in data[-self.sma_period:]) / self.sma_period
         
         # 4. Entry logic (if flat)
         if self.position == 0:  # self.position tracks open contracts

@@ -235,6 +235,27 @@ class GenericBacktester:
     def position_size(self):
         """Number of contracts/shares in current position."""
         return self._position_size
+    
+    def _apply_slippage(self, price: float, direction: int, strategy) -> float:
+        """Apply slippage to entry/exit price.
+        
+        Args:
+            price: Base price (open/close)
+            direction: 1 for long, -1 for short
+            strategy: Strategy instance with tick_size attribute
+            
+        Returns:
+            Price adjusted for slippage
+        """
+        if self.slippage_ticks == 0:
+            return price
+        
+        tick_size = getattr(strategy, 'tick_size', 0.01)
+        slippage_amount = self.slippage_ticks * tick_size
+        
+        # Buy orders suffer positive slippage (higher price)
+        # Sell orders suffer negative slippage (lower price)
+        return price + (slippage_amount * direction)
 
     def place_order(self, action: str, quantity: int = 1, exit_type: str = '', reason: str = ''):
         """Place an order to be executed on next bar.
@@ -375,49 +396,32 @@ class GenericBacktester:
         
         return early_close_dates
     
-    def run(self, strategy, data: List[Dict[str, Any]], scores_data: Optional[List[Dict[str, Any]]] = None) -> BacktestResult:
-        """Run backtest using hybrid mode: event-driven if on_bar() is overridden, else batch mode via generate_signal().
+    def run(self, strategy, data: List[Dict[str, Any]]) -> BacktestResult:
+        """Run backtest using event-driven mode.
         
         Args:
             strategy: Strategy instance (must inherit from BaseStrategy)
-            data: List of OHLCV bars with timestamp, open, high, low, close, volume
-            scores_data: Optional list of score/indicator records from database
-            
+            data: List of unified bars with embedded score fields
+                  (timestamp, open, high, low, close, score_1m, score_5m, score_15m, score_60m)
         Returns:
             BacktestResult with complete performance metrics
         """
         # Inject engine into strategy
         strategy.engine = self
-        strategy.scores_data = scores_data
         
         if self.verbose:
             print(f"Starting backtest: {strategy.name}")
             print(f"Execution mode: Event-Driven (on_bar)")
             print(f"Initial Capital: ${self.initial_capital:,.2f}")
-            print(f"Price data points: {len(data)}")
-            if scores_data:
-                print(f"Score data points: {len(scores_data)}")
+            print(f"Data points: {len(data)}")
             print(f"Max bars back: {self.max_bars_back if self.max_bars_back > 0 else 'all'}")
         
         # Detect early close dates (holiday early closes) to force close positions earlier
-        # early_close_dates = {YYYY-MM-DD: HH:MM} where HH:MM is the last bar time
         early_close_dates = self._detect_early_close_dates(data)
         if self.verbose and early_close_dates:
             print(f"Detected {len(early_close_dates)} early close dates")
-            for date_key, close_time in sorted(early_close_dates.items())[:5]:  # Show first 5
+            for date_key, close_time in sorted(early_close_dates.items())[:5]:
                 print(f"  {date_key}: last bar at {close_time}")
-        
-        # Pre-index scores by timestamp for O(1) lookup instead of O(n) filtering
-        scores_index = 0  # Track current position in scores_data
-        scores_cache = []  # Accumulate scores up to current bar
-        
-        # PRE-FILTER: Extract only 1m timeframe scores ONCE (not on every bar!)
-        # This is a HUGE performance improvement: 786K -> 199K scores filtered once, not 86K times
-        if scores_data:
-            scores_data_1m = [s for s in scores_data if s.get('timeframe') == '1m']
-            if self.verbose:
-                print(f"Pre-filtered scores: {len(scores_data)} total -> {len(scores_data_1m)} (1m timeframe only)")
-            scores_data = scores_data_1m  # Replace with filtered version
         
         # Initialize state
         equity = self.initial_capital
@@ -450,9 +454,9 @@ class GenericBacktester:
         equity_curve.append({
                     'timestamp': "",
                     'equity': equity,
-                    'position': 0
+                    'tradeDirection': 0
                 })
-        
+
         # -------------------------------------------------------------------------
         # Helper: Unified Exit Logic (Partial & Full)
         # -------------------------------------------------------------------------
@@ -653,7 +657,7 @@ class GenericBacktester:
             # PHASE 3: STRATEGY LOGIC (Event-Driven)
             # ===================================================
             # Pass ONLY data up to current bar (no look-ahead)
-            # Also pass scores up to current timestamp if available
+            # Data already contains unified bars with embedded scores (loaded from combined DB)
             if not no_new_trades or self._trade_direction != 0:
                 # Slice data to last max_bars_back bars (0 = all bars)
                 if self.max_bars_back > 0:
@@ -661,27 +665,8 @@ class GenericBacktester:
                 else:
                     bars_slice = data[:i+1]
                 
-                if scores_data:
-                    # Incrementally build scores cache (O(1) amortized instead of O(n) per bar)
-                    # Normalize both timestamps for consistent string comparison across formats
-                    bar_ts_normalized = self._normalize_timestamp_for_comparison(timestamp)
-                    while scores_index < len(scores_data):
-                        score_ts = scores_data[scores_index].get('timestamp', '')
-                        score_ts_normalized = self._normalize_timestamp_for_comparison(score_ts)
-                        if score_ts_normalized <= bar_ts_normalized:
-                            scores_cache.append(scores_data[scores_index])
-                            scores_index += 1
-                        else:
-                            break
-                    
-                    # IMPORTANT: Do NOT slice scores_cache with max_bars_back!
-                    # max_bars_back applies to BARS only, not SCORES.
-                    # Strategies need ALL historical scores to properly detect crosses and patterns.
-                    current_scores = scores_cache
-                    
-                    strategy.on_bar(bars_slice, current_scores)
-                else:
-                    strategy.on_bar(bars_slice, None)
+                # Pass unified data list to strategy (contains price + score columns)
+                strategy.on_bar(bars_slice)
             elif self.verbose and i < 100:
                 # Log when on_bar is skipped due to no_new_trades filter
                 print(f"DEBUG: Skipping on_bar at {timestamp} (no_new_trades={no_new_trades}, position={self._trade_direction})")
@@ -695,11 +680,11 @@ class GenericBacktester:
             # PHASE 4: UPDATE METRICS & EQUITY CURVE
             # ===================================================
             last_point = equity_curve[-1]
-            if last_point.get('equity') != equity or last_point.get('position') != self._trade_direction:
+            if last_point.get('equity') != equity or last_point.get('tradeDirection') != self._trade_direction:
                 equity_curve.append({
                     'timestamp': timestamp,
                     'equity': equity,
-                    'position': self._trade_direction
+                    'tradeDirection': self._trade_direction
                 })
             
             peak_equity = max(peak_equity, equity)

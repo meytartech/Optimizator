@@ -11,18 +11,17 @@
     <h1>Data Management</h1>
 </div>
 
-<!-- Hidden file inputs for upload -->
-<input type="file" id="fileInput" name="file" accept=".csv" style="display:none;">
-<input type="file" id="scoresFileInput" name="file" accept=".db" style="display:none;">
+<!-- Hidden file input for upload -->
+<input type="file" id="dbFileInput" name="file" accept=".db" style="display:none;">
 
 <div class="data-tables-flex">
     <div class="section-card data-list">
         <div class="list-header">
             <div>
-                <h2>Uploaded Data Files</h2>
-                <p class="subtext">Latest uploads appear first</p>
+                <h2>Database Files</h2>
+                <p class="subtext">Combined .db files containing OHLC candles and score indicators (1m, 5m, 15m, 60m)</p>
             </div>
-            <button class="btn btn-primary btn-small" onclick="document.getElementById('fileInput').click()" title="Upload CSV">+ Upload</button>
+            <button class="btn btn-primary btn-small" onclick="document.getElementById('dbFileInput').click()" title="Upload Combined .db">+ Upload</button>
         </div>
         <div id="uploadMessage" class="message" style="display:none;"></div>
         {% if files %}
@@ -51,47 +50,8 @@
             </table>
         </div>
         {% else %}
-        <p class="empty-message">No data files uploaded yet. Upload your first CSV file above!</p>
+        <p class="empty-message">No database files uploaded yet. Upload your first .db file above!</p>
         {% endif %}
-    </div>
-
-    <div class="section-card data-list">
-        <div class="list-header">
-            <div>
-                <h2>Uploaded Score Databases</h2>
-                <p class="subtext">Use these in Backtest as optional scores</p>
-            </div>
-            <button class="btn btn-primary btn-small" onclick="document.getElementById('scoresFileInput').click()" title="Upload Score DB">+ Upload</button>
-        </div>
-        <div id="uploadScoresMessage" class="message" style="display:none;"></div>
-        {% if score_files %}
-        <div class="table-container compact-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Filename</th>
-                        <th>Size</th>
-                        <th>Last Modified</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for file in score_files %}
-                    <tr>
-                        <td>{{ file.name }}</td>
-                        <td>{{ file.size }}</td>
-                        <td>{{ file.modified }}</td>
-                        <td class="action-buttons">
-                            <button class="btn btn-small btn-danger" onclick="deleteScores('{{ file.name }}')">Delete</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-                {% else %}
-                <p class="empty-message">No score databases uploaded yet. Upload a .db file above!</p>
-                {% endif %}
     </div>
 </div>
 
@@ -114,8 +74,8 @@
 
 {% block extra_scripts %}
 <script>
-// CSV file upload handler
-document.getElementById('fileInput').addEventListener('change', async (e) => {
+// Database file upload handler
+document.getElementById('dbFileInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -136,43 +96,7 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
         const data = await response.json();
         
         if (response.ok) {
-            messageDiv.textContent = `✓ File uploaded successfully! Rows: ${data.info.rows}`;
-            messageDiv.className = 'message message-success';
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            messageDiv.textContent = `✗ Error: ${data.error}`;
-            messageDiv.className = 'message message-error';
-        }
-    } catch (error) {
-        messageDiv.textContent = `✗ Error: ${error.message}`;
-        messageDiv.className = 'message message-error';
-    }
-    e.target.value = '';
-});
-
-// Score DB file upload handler
-document.getElementById('scoresFileInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const messageDiv = document.getElementById('uploadScoresMessage');
-    messageDiv.style.display = 'block';
-    messageDiv.textContent = 'Uploading scores DB...';
-    messageDiv.className = 'message message-info';
-    
-    try {
-        const response = await fetch('/scores/upload', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            messageDiv.textContent = `✓ Scores DB uploaded successfully: ${data.filename}`;
+            messageDiv.textContent = `✓ Database uploaded successfully! Price bars: ${data.info.price_bars}, Score records: ${data.info.score_records}`;
             messageDiv.className = 'message message-success';
             setTimeout(() => location.reload(), 1500);
         } else {
@@ -187,29 +111,12 @@ document.getElementById('scoresFileInput').addEventListener('change', async (e) 
 });
 
 async function deleteData(filename) {
-    const confirmed = await openConfirm(`Delete data file "${filename}"?`);
+    const confirmed = await openConfirm(`Delete database file "${filename}"?`);
     if (!confirmed) return;
     try {
         const response = await fetch(`/data/delete/${filename}`, { method: 'POST' });
         const data = await response.json();
         if (response.ok) {
-            setTimeout(() => location.reload(), 800);
-        } else {
-            showToast(`Error: ${data.error}`);
-        }
-    } catch (error) {
-        showToast(`Error: ${error.message}`);
-    }
-}
-
-async function deleteScores(filename) {
-    const confirmed = await openConfirm(`Delete score database "${filename}"?`);
-    if (!confirmed) return;
-    try {
-        const response = await fetch(`/scores/delete/${filename}`, { method: 'POST' });
-        const data = await response.json();
-        if (response.ok) {
-            showToast('Scores DB deleted successfully');
             setTimeout(() => location.reload(), 800);
         } else {
             showToast(`Error: ${data.error}`);
