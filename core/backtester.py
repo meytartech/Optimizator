@@ -15,6 +15,8 @@ from datetime import datetime, time
 import json
 import pytz
 
+from core.timezone_utils import convert_to_timestamp
+
 @dataclass
 class Trade:
     """Represents a completed trade or partial exit."""
@@ -527,9 +529,8 @@ class GenericBacktester:
             # Lazy timestamp parsing: only parse if we need it for session logic
             # Skip parsing if no position and no pending order (most common case)
             if self._trade_direction != 0 or self.pending_order:
-                bar_dt = self._parse_datetime(timestamp)
-                bar_time = bar_dt.time() if bar_dt else None
-                bar_date = bar_dt.strftime('%Y-%m-%d') if bar_dt else None
+                bar_time = timestamp.time()
+                bar_date = timestamp.date()
             
             # Check if today is an early close day (holiday)
             is_early_close_day = bar_date in early_close_dates
