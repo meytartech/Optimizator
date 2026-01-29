@@ -123,7 +123,16 @@ def main():
         scores_slice: List[Dict[str, Any]] = bars_slice  # All data includes embedded scores
 
         try:
-            strat.on_bar(bars_slice, scores_slice)
+                # Call strategy.on_bar with the appropriate signature.
+                # Some strategies expect only `data`, others accept `data, scores_data`.
+                import inspect
+                sig = inspect.signature(strat.on_bar)
+                params = len(sig.parameters)
+                # For bound methods, parameters typically exclude 'self', so params==1 means only data
+                if params >= 2:
+                    strat.on_bar(bars_slice, scores_slice)
+                else:
+                    strat.on_bar(bars_slice)
         except Exception:
             errors.append((i, 'on_bar', traceback.format_exc()))
             # Continue to next bar to collect more errors

@@ -127,13 +127,13 @@ class MNQStrategy(BaseStrategy):
             pass
         return (0, 0)
 
-    def on_bar(self, price_bars: List[Dict[str, Any]], scores_data: Optional[List[Dict[str, Any]]] = None):
+    def on_bar(self, data: List[Dict[str, Any]]):
         """Event-driven logic called on every bar."""
         # Need at least atr_length + 1 bars for ATR
-        if len(price_bars) < self.atr_length + 1:
+        if len(data) < self.atr_length + 1:
             return
         
-        current_bar = price_bars[-1]
+        current_bar = data[-1]
         timestamp = current_bar.get('timestamp', '')
         close = current_bar['close']
         high = current_bar.get('high', close)
@@ -144,21 +144,14 @@ class MNQStrategy(BaseStrategy):
             self._position_direction = 0
         
         # Entry detection (if flat)
-        if self.position == 0 and scores_data and len(scores_data) >= 2:
-            # Get last 2 unique timestamps for score crosses
-            unique_timestamps = []
-            seen_timestamps = set()
-            for s in reversed(scores_data):
-                ts = s['timestamp']
-                if ts not in seen_timestamps:
-                    unique_timestamps.append(s)
-                    seen_timestamps.add(ts)
-                if len(unique_timestamps) >= 2:
-                    break
+        if self.position == 0 and len(data) >= 2:
+            # Get score_1m from last 2 bars (embedded in combined data)
+            current_score_1m = data[-1].get('score_1m')
+            previous_score_1m = data[-2].get('score_1m')
             
-            if len(unique_timestamps) >= 2:
-                current_score = unique_timestamps[0]['score']
-                previous_score = unique_timestamps[1]['score']
+            if current_score_1m is not None and previous_score_1m is not None:
+                current_score = current_score_1m
+                previous_score = previous_score_1m
                 
                 crossed_up = previous_score <= self.cross_level and current_score > self.cross_level
                 crossed_down = previous_score >= self.cross_level and current_score < self.cross_level
@@ -168,7 +161,7 @@ class MNQStrategy(BaseStrategy):
                     confirmations = 0  # Placeholder for future multi-timeframe logic
                     
                     if True:  # Always enter on cross for now
-                        atr_val = self._calculate_atr(price_bars)
+                        atr_val = self._calculate_atr(data)
                         if atr_val <= 0:
                             return
                         
@@ -176,7 +169,7 @@ class MNQStrategy(BaseStrategy):
                         self._entry_atr = atr_val
                         
                         # Find swing points for stop loss
-                        swing_low, swing_high = self._find_swing_points(price_bars, len(price_bars) - 1)
+                        swing_low, swing_high = self._find_swing_points(data, len(data) - 1)
                         
                         # Calculate and store TP/SL levels
                         if crossed_up:
@@ -268,7 +261,7 @@ class MNQStrategy(BaseStrategy):
                         self.buy(quantity=self.position, reason='SL')
             
             # Force-close at session end
-            if self.is_session_end(timestamp, early_close=False):
+            if self.is_session_end(timestamp):
                 if self.position > 0:
                     if self._position_direction == 1:
                         self.sell_short(quantity=self.position, reason='FORCE_CLOSE_EOD')

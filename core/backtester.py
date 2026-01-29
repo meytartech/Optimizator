@@ -278,9 +278,26 @@ class GenericBacktester:
         """Parse datetime from format: DD/MM/YYYY HH:MM:SS"""
         if not time_str:
             return None
+        # Try multiple common formats including DB format with microseconds
+        formats = [
+            '%d/%m/%Y %H:%M:%S',
+            '%Y-%m-%d %H:%M:%S.%f',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S.%f%z',
+            '%Y-%m-%dT%H:%M:%S.%f',
+            '%Y-%m-%dT%H:%M:%S%z',
+            '%Y-%m-%dT%H:%M:%S'
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(time_str, fmt)
+            except Exception:
+                continue
+
+        # Fallback: try fromisoformat (handles many ISO variants and space-separated)
         try:
-            return datetime.strptime(time_str, '%d/%m/%Y %H:%M:%S')
-        except:
+            return datetime.fromisoformat(time_str)
+        except Exception:
             return None
     
     @staticmethod
@@ -299,52 +316,31 @@ class GenericBacktester:
         """
         if not timestamp:
             return ""
-        
-        # Try to detect format
-        if 'T' in timestamp or timestamp.count('-') == 3:
-            # ISO 8601 format: 2026-01-16T17:01:00-06:00
-            # Extract the datetime part before timezone
+
+        # Try parsing with common formats (including microseconds and ISO variants)
+        formats = [
+            '%Y-%m-%d %H:%M:%S.%f',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%dT%H:%M:%S.%f%z',
+            '%Y-%m-%dT%H:%M:%S.%f',
+            '%Y-%m-%dT%H:%M:%S%z',
+            '%Y-%m-%dT%H:%M:%S',
+            '%d/%m/%Y %H:%M:%S'
+        ]
+
+        for fmt in formats:
             try:
-                # Remove timezone info (after + or -)
-                if '+' in timestamp:
-                    dt_part = timestamp.split('+')[0]
-                elif timestamp.count('-') > 2:  # More than 2 hyphens = has timezone
-                    # Find the last hyphen that's part of timezone (not date)
-                    parts = timestamp.split('T')
-                    if len(parts) == 2:
-                        date_part = parts[0]  # 2026-01-16
-                        time_tz = parts[1]   # 17:01:00-06:00
-                        if '-' in time_tz:
-                            time_part = time_tz.split('-')[0]  # 17:01:00
-                            dt_part = f"{date_part}T{time_part}"
-                        else:
-                            dt_part = timestamp
-                    else:
-                        dt_part = timestamp
-                else:
-                    dt_part = timestamp
-                
-                # Parse ISO format
-                if 'T' in dt_part:
-                    dt = datetime.fromisoformat(dt_part)
-                else:
-                    dt = datetime.fromisoformat(dt_part)
-                
-                # Return normalized as YYYY-MM-DD HH:MM:SS
+                dt = datetime.strptime(timestamp, fmt)
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                # If parsing fails, return original
-                return timestamp
-        
-        else:
-            # DD/MM/YYYY HH:MM:SS format (price bars)
-            try:
-                dt = datetime.strptime(timestamp, '%d/%m/%Y %H:%M:%S')
-                # Return normalized as YYYY-MM-DD HH:MM:SS
-                return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                # If parsing fails, return original
-                return timestamp
+            except Exception:
+                continue
+
+        # Fallback to fromisoformat for some ISO-like variants
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return timestamp
     
     def _detect_early_close_dates(self, data: List[Dict]) -> Dict[str, str]:
         """Detect dates with early market closes by finding last bar per date.
@@ -520,11 +516,8 @@ class GenericBacktester:
 
         for i, bar in enumerate(data):
             # Cache bar fields to avoid repeated dict.get() calls (3-5x per bar)
-            timestamp = bar.get('timestamp', '')
-            open_price = bar.get('open', bar.get('price'))
-            close = bar.get('close', open_price)
-            high = bar.get('high', close)
-            low = bar.get('low', close)
+            timestamp =  bar["timestamp"]
+            open_price = bar["open"]
 
             # Convert timestamp string to datetime (only if needed for session checks)
             bar_dt = None
@@ -543,18 +536,20 @@ class GenericBacktester:
             
             # Dynamic force-close time: 1 minute before the last bar time
             force_close_time = None
-            no_new_trades_time = None
+            trading_halt_time = None
+            
             if is_early_close_day and bar_date in early_close_dates:
                 # Get the last bar time (e.g., "11:55")
                 last_bar_time_str = early_close_dates[bar_date]  # HH:MM
                 try:
                     lh, lm = map(int, last_bar_time_str.split(':'))
                     force_close_time = time(lh, lm)
+                    
                     # No new trades 15 minutes before close (e.g., if close is 11:55, block after 11:40)
                     if lm >= 15:
-                        no_new_trades_time = time(lh, lm - 15)
+                        trading_halt_time = time(lh, lm - 15)
                     else:
-                        no_new_trades_time = time(lh - 1, lm + 60 - 15)
+                        trading_halt_time = time(lh - 1, lm + 60 - 15)
                 except:
                     pass
             
@@ -566,13 +561,13 @@ class GenericBacktester:
                 execute_exit(remaining_quantity, open_price, 'EARLY_CLOSE', timestamp)
             
             # Block new trades based on market session
-            no_new_trades = False
-            if is_early_close_day and no_new_trades_time:
+            is_new_trade_allowed = False
+            if is_early_close_day and trading_halt_time:
                 # Block new trades 15 min before early close
-                no_new_trades = bar_time and bar_time >= no_new_trades_time
+                is_new_trade_allowed = bar_time and bar_time >= trading_halt_time
             else:
                 # Normal trading hours: block new trades from 15:40 to 17:00 CT (daily halt 16:00-17:00)
-                no_new_trades = bar_time and time(15, 40) <= bar_time < time(17, 0)
+                is_new_trade_allowed = bar_time and time(15, 40) <= bar_time < time(17, 0)
             
             # ===================================================
             # PHASE 1: FILL PENDING ORDERS (Next-Bar Execution)
@@ -583,7 +578,7 @@ class GenericBacktester:
                 act = self.pending_order.get('action')
                 if (act == 'buy' and self._trade_direction == -1) or (act == 'sell' and self._trade_direction == 1):
                     is_exit_order = True
-            can_execute = self.pending_order is not None and (not no_new_trades or is_exit_order)
+            can_execute = self.pending_order is not None and (not is_new_trade_allowed or is_exit_order)
 
             if self.pending_order and len(trades) < 5:
                 # Debug logging removed
@@ -644,6 +639,7 @@ class GenericBacktester:
             # ===================================================
             # PHASE 2: No implicit exits; strategy must place exit orders
             # ===================================================
+            
             if self._trade_direction != 0 and remaining_quantity <= 0:
                 self._trade_direction = 0
                 self._entry_price = 0.0
@@ -654,11 +650,11 @@ class GenericBacktester:
                 exit_type = ''
 
             # ===================================================
-            # PHASE 3: STRATEGY LOGIC (Event-Driven)
+            # PHASE 3: STRATEGY LOGIC
             # ===================================================
             # Pass ONLY data up to current bar (no look-ahead)
-            # Data already contains unified bars with embedded scores (loaded from combined DB)
-            if not no_new_trades or self._trade_direction != 0:
+            
+            if not is_new_trade_allowed or self._trade_direction != 0:
                 # Slice data to last max_bars_back bars (0 = all bars)
                 if self.max_bars_back > 0:
                     bars_slice = data[max(0, i+1-self.max_bars_back):i+1]
@@ -669,13 +665,8 @@ class GenericBacktester:
                 strategy.on_bar(bars_slice)
             elif self.verbose and i < 100:
                 # Log when on_bar is skipped due to no_new_trades filter
-                print(f"DEBUG: Skipping on_bar at {timestamp} (no_new_trades={no_new_trades}, position={self._trade_direction})")
+                print(f"DEBUG: Skipping on_bar at {timestamp} (no_new_trades={is_new_trade_allowed}, position={self._trade_direction})")
                 
-                # Progress logging every 10K bars
-                if self.verbose and (i + 1) % 10000 == 0:
-                    scores_1m_count = sum(1 for s in scores_cache if s.get('timeframe') == '1m')
-                    print(f"Progress: {i+1}/{len(data)} bars ({(i+1)/len(data)*100:.1f}%), Trades: {len(trades)}, Equity: ${equity:,.2f}, Scores cached: {len(scores_cache)} (1m: {scores_1m_count})")
-
             # ===================================================
             # PHASE 4: UPDATE METRICS & EQUITY CURVE
             # ===================================================
@@ -833,7 +824,7 @@ class GenericBacktester:
                 time_str = trade.entry_time.replace(',', ' ')
                 
                 dt = None
-                for fmt in ['%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                for fmt in ['%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S']:
                     try:
                         dt = datetime.strptime(time_str, fmt)
                         break
@@ -894,7 +885,7 @@ class GenericBacktester:
                 time_str = trade.entry_time.replace(',', ' ')
                 
                 dt = None
-                for fmt in ['%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                for fmt in ['%d/%m/%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S']:
                     try:
                         dt = datetime.strptime(time_str, fmt)
                         break

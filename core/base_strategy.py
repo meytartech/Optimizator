@@ -6,6 +6,7 @@ Supports stocks ($) and futures (points/ticks) with configurable multi-TP/SL/bre
 """
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 from typing import Dict, List, Any, Optional, Callable, Union, Tuple
 from dataclasses import dataclass
 
@@ -168,30 +169,29 @@ class BaseStrategy(ABC):
 
     # Exits are expressed via buy/sell with quantity and named reasons.
     
-    def is_session_end(self, timestamp: str, early_close: bool = False) -> bool:
-        """Check if current time is session end (force close time).
-        
-        MNQ Session: 5:00 PM Sunday to 4:00 PM Friday CT
-        Force close: 3:45 PM CT on regular days, 12:00 PM CT on early close days
-        
+    def is_session_end(self, timestamp: datetime) -> bool:
+        """Determine if the given timestamp is the session end (force close time) for MNQ trading.
+
+        MNQ Session: 5:00 PM Sunday to 4:00 PM Friday CT.
+        Force close: 3:45 PM CT on regular days, 12:00 PM CT on early close days.
+
         Args:
-            timestamp: Bar timestamp (format: 'DD/MM/YYYY HH:MM:SS')
-            early_close: True if today is an early close day
-            
+            timestamp: Bar timestamp as a datetime object (timezone-aware).
+
         Returns:
-            True if at force close time
+            True if the timestamp matches the force close time, otherwise False.
         """
+        
         try:
-            from datetime import datetime, time
-            dt = datetime.strptime(timestamp, '%d/%m/%Y %H:%M:%S')
-            bar_time = dt.time()
+            from datetime import time
             
-            if early_close:
-                return bar_time == time(12, 0)  # 12:00 PM CT = noon
-            else:
-                return bar_time == time(15, 45)  # 3:45 PM CT
+            bar_time = timestamp.time()
+                        
+            return bar_time == time(15, 45)  # 3:45 PM CT
         except:
+            print(f"Error parsing timestamp in is_session_end: {timestamp}")
             return False
+        
     
     def is_outside_session(self, timestamp: str) -> bool:
         """Check if current time is outside MNQ trading session.
@@ -200,14 +200,15 @@ class BaseStrategy(ABC):
         Gap: 4:00 PM Friday to 5:00 PM Sunday
         
         Args:
-            timestamp: Bar timestamp (format: 'DD/MM/YYYY HH:MM:SS')
+            timestamp: Bar timestamp (format: 'YYYY-MM-DD HH:MM:SS%z')
             
         Returns:
             True if outside trading hours
         """
         try:
             from datetime import datetime
-            dt = datetime.strptime(timestamp, '%d/%m/%Y %H:%M:%S')
+            
+            dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S%z')
             day_of_week = dt.weekday()  # 0=Monday, 6=Sunday
             hour = dt.hour
             

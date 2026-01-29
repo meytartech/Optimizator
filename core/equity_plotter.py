@@ -48,8 +48,8 @@ class EquityPlotter:
                 # Parse timestamp (handle various formats)
                 ts_str = point.get('timestamp', '')
                 if '/' in ts_str or '-' in ts_str:
-                    # Try parsing date/time
-                    for fmt in ['%d/%m/%Y,%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                    # Try parsing date/time (prefer microsecond-aware DB format)
+                    for fmt in ['%Y-%m-%d %H:%M:%S.%f', '%d/%m/%Y,%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S']:
                         try:
                             ts = datetime.strptime(ts_str.replace(',', ' '), fmt)
                             break
@@ -149,7 +149,7 @@ class EquityPlotter:
                 equity = point.get('equity', 0)
                 
                 # Parse timestamp
-                for fmt in ['%d/%m/%Y,%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+                for fmt in ['%Y-%m-%d %H:%M:%S.%f', '%d/%m/%Y,%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S']:
                     try:
                         ts = datetime.strptime(ts_str.replace(',', ' '), fmt)
                         break

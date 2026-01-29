@@ -10,86 +10,12 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
 
+from core.timezone_utils import convert_to_timestamp
+
 
 class ScoreDataLoader:
     """Load score data from SQLite database files."""
-    
-    @staticmethod
-    def normalize_timestamp(timestamp: str) -> str:
-        """Normalize timestamp to match price data format.
         
-        Converts ISO 8601 (2026-01-16T01:00:00+00:00) to DD/MM/YYYY HH:MM:00 format
-        (seconds clamped to 00 to align with minute bars in CSV).
-        
-        Args:
-            timestamp: Timestamp string in any format
-            
-        Returns:
-            Normalized timestamp in DD/MM/YYYY HH:MM:SS format
-        """
-        try:
-            # Try parsing ISO 8601 format
-            if 'T' in timestamp:
-                # ISO format: 2026-01-16T01:00:00+00:00
-                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                return dt.replace(second=0).strftime('%d/%m/%Y %H:%M:%S')
-            elif '/' in timestamp:
-                # European format
-                for fmt in ['%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M']:
-                    try:
-                        dt = datetime.strptime(timestamp, fmt)
-                        return dt.replace(second=0).strftime('%d/%m/%Y %H:%M:%S')
-                    except Exception:
-                        continue
-                # If parsing fails, return as-is
-                return timestamp
-            else:
-                # Try other common formats
-                for fmt in ['%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
-                    try:
-                        dt = datetime.strptime(timestamp, fmt)
-                        return dt.replace(second=0).strftime('%d/%m/%Y %H:%M:%S')
-                    except:
-                        continue
-                return timestamp
-        except Exception:
-            return timestamp
-    
-    @staticmethod
-    def _normalize_filter_value(value: Optional[str]) -> Optional[str]:
-        """Normalize filter values (start/end) to ISO 'YYYY-MM-DDTHH:MM:SS'.
-        
-        Accepts a variety of timestamp string formats (ISO with 'T',
-        'YYYY-MM-DD HH:MM:SS', or 'DD/MM/YYYY HH:MM[:SS]') and returns
-        a consistent ISO string suitable for lexicographic comparison
-        in SQLite where the 'timestamp' column stores ISO strings.
-        """
-        if value is None:
-            return None
-        try:
-            # Already ISO-like
-            if 'T' in value:
-                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                return dt.strftime('%Y-%m-%dT%H:%M:%S')
-            # Space-separated ISO without 'T'
-            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
-                try:
-                    dt = datetime.strptime(value, fmt)
-                    return dt.strftime('%Y-%m-%dT%H:%M:%S')
-                except Exception:
-                    pass
-            # European format
-            for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M'):
-                try:
-                    dt = datetime.strptime(value, fmt)
-                    return dt.strftime('%Y-%m-%dT%H:%M:%S')
-                except Exception:
-                    pass
-            # Fallback: return as-is (better to include than exclude)
-            return value
-        except Exception:
-            return value
-
     @staticmethod
     def load_scores(db_path: str, channel_name: Optional[str] = None, 
                    timeframe: Optional[str] = None,
@@ -366,8 +292,8 @@ class ScoreDataLoader:
             params.append(channel_name)
         
         # Normalize filter values to ISO
-        norm_start = ScoreDataLoader._normalize_filter_value(start_date)
-        norm_end = ScoreDataLoader._normalize_filter_value(end_date)
+        norm_start = convert_to_timestamp(start_date)
+        norm_end = convert_to_timestamp(end_date)
         
         if norm_start:
             query += " AND timestamp >= ?"
@@ -387,7 +313,7 @@ class ScoreDataLoader:
         unified_data = []
         
         for row in rows:
-            normalized_ts = ScoreDataLoader.normalize_timestamp(row['timestamp'])
+            normalized_ts = convert_to_timestamp(row['timestamp'])
             
             # Create unified bar with embedded scores
             unified_data.append({
@@ -450,8 +376,8 @@ class ScoreDataLoader:
             raise ValueError("No table found with required columns")
         
         # Normalize timestamps
-        norm_start = ScoreDataLoader._normalize_filter_value(start_timestamp)
-        norm_end = ScoreDataLoader._normalize_filter_value(end_timestamp)
+        norm_start = convert_to_timestamp(start_timestamp)
+        norm_end = convert_to_timestamp(end_timestamp)
         
         # Simpler approach: Get range + buffer bars before and after
         # First, find timestamps at the edges of our range
@@ -500,10 +426,10 @@ class ScoreDataLoader:
         
         # Build unified data array
         unified_data = []
+        
         for row in rows:
-            normalized_ts = ScoreDataLoader.normalize_timestamp(row['timestamp'])
             unified_data.append({
-                'timestamp': normalized_ts,
+                'timestamp': row['timestamp'],
                 'open': float(row['open']) if row['open'] is not None else 0.0,
                 'high': float(row['high']) if row['high'] is not None else 0.0,
                 'low': float(row['low']) if row['low'] is not None else 0.0,

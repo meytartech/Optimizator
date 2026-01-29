@@ -66,7 +66,7 @@ class OGMNQStrategy(BaseStrategy):
             
         return sum(true_ranges) / len(true_ranges)
 
-    def on_bar(self, price_bars: List[Dict[str, Any]], scores_data: Optional[List[Dict[str, Any]]] = None):
+    def on_bar(self, data: List[Dict[str, Any]]):
         """
         The main event loop called by the engine for every bar.
         - Entry: 3 contracts on 1m score cross above/below 0
@@ -74,72 +74,61 @@ class OGMNQStrategy(BaseStrategy):
         - ATR: Calculated dynamically for TP/SL calculation
         
         Args:
-            price_bars: Price bars up to current timestamp
-            scores_data: Optional score records up to current timestamp
+            data: Combined price+score bars up to current timestamp
         """
         # 1. Need at least 2 bars to detect a cross and 'atr_length' for ATR
-        if len(price_bars) < max(self.atr_length + 1, 2):
+        if len(data) < max(self.atr_length + 1, 2):
             return
 
         # Get current bar (always available)
-        current_bar = price_bars[-1]
+        current_bar = data[-1]
         current_timestamp = current_bar.get('timestamp', '')
-        
+
         # Reset position direction when flat
         if self.position == 0 and self._position_direction != 0:
             self._position_direction = 0
         
         # Entry detection (if flat)
-        if self.position == 0 and scores_data and len(scores_data) >= 2:
-            # Backtester pre-filters scores to 1m timeframe, so scores_data already contains only 1m scores
-            # No need to filter again (massive performance improvement!)
-            
-            # Get last 2 unique timestamps for 1m scores
-            # Handle multiple records per timestamp by grouping
-            unique_timestamps = []
-            seen_timestamps = set()
-            for s in reversed(scores_data):
-                ts = s['timestamp']
-                if ts not in seen_timestamps:
-                    unique_timestamps.append(s)
-                    seen_timestamps.add(ts)
-                if len(unique_timestamps) >= 2:
-                    break
-            
-            if len(unique_timestamps) >= 2:
-                current_score = unique_timestamps[0]['score']
-                previous_score = unique_timestamps[1]['score']
+        if self.position == 0:
+            # Extract score_1m from last 2 bars (now embedded in combined data)
+            if len(data) >= 2:
+                current_score_1m = data[-1].get('score_1m')
+                previous_score_1m = data[-2].get('score_1m')
                 
-                crossed_up = previous_score <= 0 and current_score > 0
-                crossed_down = previous_score >= 0 and current_score < 0
+                if current_score_1m is not None and previous_score_1m is not None:
+                    current_score = current_score_1m
+                    previous_score = previous_score_1m
+                
+                    crossed_up = previous_score <= 0 and current_score > 0
+                    crossed_down = previous_score >= 0 and current_score < 0
 
-                if crossed_up or crossed_down:
-                    atr_val = self._calculate_atr(price_bars)
-                    if atr_val <= 0: 
-                        return
+                    if crossed_up or crossed_down:
+                        atr_val = self._calculate_atr(data)
+                        if atr_val <= 0: 
+                            return
 
-                    close_price = current_bar['close']
-                    self._entry_price = close_price
-                    self._entry_atr = atr_val
-                    
-                    # Calculate and store TP/SL levels for use in exit checks
-                    self._sl_level = close_price - (1 if crossed_up else -1) * atr_val * self.sl_multiplier
-                    self._tp1_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp1_multiplier
-                    self._tp2_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp2_multiplier
-                    self._tp3_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp3_multiplier
-                    
-                    # Reset exit flags
-                    self._tp1_hit = False
-                    self._tp2_hit = False
-                    self._tp3_hit = False
-                    
-                    # Entry: Buy/Sell 3 contracts
-                    if crossed_up:
-                        self.buy(quantity=3, reason='ENTRY')
-                        self._position_direction = 1
-                    else:  # crossed_down
-                        self.sell_short(quantity=3, reason='ENTRY')
-                        self._position_direction = -1
+                        close_price = current_bar['close']
+                        self._entry_price = close_price
+                        self._entry_atr = atr_val
+                        
+                        # Calculate and store TP/SL levels for use in exit checks
+                        self._sl_level = close_price - (1 if crossed_up else -1) * atr_val * self.sl_multiplier
+                        self._tp1_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp1_multiplier
+                        self._tp2_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp2_multiplier
+                        self._tp3_level = close_price + (1 if crossed_up else -1) * atr_val * self.tp3_multiplier
+                        
+                        # Reset exit flags
+                        self._tp1_hit = False
+                        self._tp2_hit = False
+                        self._tp3_hit = False
+                        
+                        # Entry: Buy/Sell 3 contracts
+                        if crossed_up:
+                            self.buy(quantity=3, reason='ENTRY')
+                            self._position_direction = 1
+                        else:  # crossed_down
+                            self.sell_short(quantity=3, reason='ENTRY')
+                            self._position_direction = -1
         
         # Exit handling (if in position)
         if self.position != 0 and self._position_direction != 0:
@@ -183,7 +172,7 @@ class OGMNQStrategy(BaseStrategy):
                     self.buy(quantity=self.position, reason='SL')
             
             # Force-close at session end
-            if self.is_session_end(current_timestamp, early_close=False):
+            if self.is_session_end(current_timestamp):
                 if self.position > 0:
                     if self._position_direction == 1:
                         self.sell_short(quantity=self.position, reason='FORCE_CLOSE_EOD')
