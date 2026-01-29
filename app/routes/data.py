@@ -34,14 +34,14 @@ def list_data_files():
         for f in os.listdir(config['UPLOAD_FOLDER']):
             if f.lower().endswith('.db'):
                 full_path = os.path.join(config['UPLOAD_FOLDER'], f)
-                if ScoreDataLoader.is_combined_database(full_path):
+                if ScoreDataLoader.is_valid_db(full_path):
                     files.add(f)
     
     if os.path.isdir(LEGACY_UPLOADS):
         for f in os.listdir(LEGACY_UPLOADS):
             if f.lower().endswith('.db'):
                 full_path = os.path.join(LEGACY_UPLOADS, f)
-                if ScoreDataLoader.is_combined_database(full_path):
+                if ScoreDataLoader.is_valid_db(full_path):
                     files.add(f)
     
     return sorted(files)
@@ -112,7 +112,7 @@ def upload_data():
     # Validate the uploaded file
     try:
         # Validate combined .db format
-        if not ScoreDataLoader.is_combined_database(filepath):
+        if not ScoreDataLoader.is_valid_db(filepath):
             logger.error("Not a combined .db format (missing required columns: timestamp, score_1m, score_5m, score_15m, score_60m, high, low, open, close)")
             if os.path.exists(filepath):
                 os.remove(filepath)

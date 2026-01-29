@@ -150,7 +150,7 @@ def execute_live_backtest(temp_result_id):
                 logger.info(f"Loading price data from: {data_path}")
                 
                 # Load combined .db format (OHLC + scores together)
-                if not data_path.lower().endswith('.db') or not ScoreDataLoader.is_combined_database(data_path):
+                if not data_path.lower().endswith('.db') or not ScoreDataLoader.is_valid_db(data_path):
                     logger.error(f"Invalid data file: {data_file}. Only combined .db files (with OHLC + scores) are supported.")
                     yield f"data: {json.dumps({'type': 'error', 'message': 'Invalid data file format. Expected combined .db file with OHLC and score data.'})}\n\n"
                     raise ValueError("Only combined .db files are supported")
@@ -233,7 +233,6 @@ def execute_live_backtest(temp_result_id):
                 # Create results data structure
                 results_data = {
                     'data_file': config.get('data_file', ''),  # Store .db path for later loading
-                    'parameters': config.get('parameters', {}),
                     'strategy_setup_params': strategy_setup_params,
                     'point_value': config.get('point_value', 1.0),
                     'tick_size': config.get('tick_size', 0.01),

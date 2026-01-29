@@ -267,7 +267,7 @@ class ScoreDataLoader:
             return False
     
     @staticmethod
-    def is_combined_database(db_path: str) -> bool:
+    def is_valid_db(db_path: str) -> bool:
         """Check if database contains combined price + score data.
         
         A combined database must have a table with these columns:
@@ -327,7 +327,7 @@ class ScoreDataLoader:
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Database file not found: {db_path}")
         
-        if not ScoreDataLoader.is_combined_database(db_path):
+        if not ScoreDataLoader.is_valid_db(db_path):
             raise ValueError(f"Database does not have combined format. Required columns: timestamp, score_1m, score_5m, score_15m, score_60m, high, low, open, close")
         
         conn = sqlite3.connect(db_path)
@@ -423,7 +423,7 @@ class ScoreDataLoader:
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"Database file not found: {db_path}")
         
-        if not ScoreDataLoader.is_combined_database(db_path):
+        if not ScoreDataLoader.is_valid_db(db_path):
             raise ValueError(f"Database does not have combined format")
         
         conn = sqlite3.connect(db_path)

@@ -358,11 +358,13 @@ def get_trade_details(result_id, trade_index):
         data_file = results.get('data_file', '')
         if data_file:
             db_path = get_data_file_path(data_file)
-            if os.path.exists(db_path) and ScoreDataLoader.is_combined_database(db_path):
+            
+            if os.path.exists(db_path) and ScoreDataLoader.is_valid_db(db_path):
                 try:
                     # Load only the range needed for this trade (with buffer)
                     entry_ts = trade.get('entry_timestamp', trade.get('entry_time', ''))
                     exit_ts = trade.get('exit_timestamp', trade.get('exit_time', ''))
+                    
                     all_prices = ScoreDataLoader.load_combined_db_range(db_path, entry_ts, exit_ts, buffer_bars=100)
                     logger.info(f"Loaded {len(all_prices)} bars from .db for trade range")
                 except Exception as e:
@@ -378,7 +380,7 @@ def get_trade_details(result_id, trade_index):
             # Find entry/exit indices in loaded data
             entry_ts = trade.get('entry_timestamp', trade.get('entry_time', ''))
             exit_ts = trade.get('exit_timestamp', trade.get('exit_time', ''))
-            
+
             for idx, bar in enumerate(all_prices):
                 bar_ts = bar.get('timestamp', '')
                 if bar_ts == entry_ts:
@@ -728,7 +730,7 @@ def _execute_optimization_job(job_id: str, config: dict):
             # Load combined .db (only supported format)
             data_file = config['data_file']
             data_path = get_data_file_path(data_file)
-            if not (data_path.lower().endswith('.db') and ScoreDataLoader.is_combined_database(data_path)):
+            if not (data_path.lower().endswith('.db') and ScoreDataLoader.is_valid_db(data_path)):
                 raise ValueError("Only combined .db files (OHLC + multi-timeframe scores) are supported for optimization")
 
             unified_data = ScoreDataLoader.load_combined_db(

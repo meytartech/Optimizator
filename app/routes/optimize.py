@@ -75,7 +75,7 @@ def run_optimization():
         # Validate data file: only combined .db is supported
         data_file = config.get('data_file')
         data_path = get_data_file_path(data_file)
-        if not data_file or not data_path.lower().endswith('.db') or not ScoreDataLoader.is_combined_database(data_path):
+        if not data_file or not data_path.lower().endswith('.db') or not ScoreDataLoader.is_valid_db(data_path):
             logger.error(f"Invalid data file for optimization: {data_file}. Only combined .db files are supported.")
             return jsonify({'error': 'Only combined .db files are supported'}), 400
         
