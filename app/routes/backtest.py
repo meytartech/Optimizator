@@ -207,7 +207,7 @@ def execute_live_backtest(temp_result_id):
                     except:
                         pass
                 
-                logger.info(f"Running backtest with {len(data)} unified bars (OHLCV + scores)")
+                logger.info(f"Running backtest with {len(data)} bars")
                 
                 while not log_queue.empty():
                     yield f"data: {json.dumps({'type': 'log', 'message': log_queue.get()})}\n\n"

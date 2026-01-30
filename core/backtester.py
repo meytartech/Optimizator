@@ -11,7 +11,7 @@ Supports:
 
 from typing import Dict, List, Any, Optional, Callable, Tuple, Union
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import json
 import pytz
 
@@ -344,7 +344,7 @@ class GenericBacktester:
         except Exception:
             return timestamp
     
-    def _detect_early_close_dates(self, data: List[Dict]) -> Dict[str, str]:
+    def _detect_early_close_dates(self, data: List[Dict]) -> Dict[str, time]:
         """Detect dates with early market closes by finding last bar per date.
         
         Optimized: Iterates backwards to find last bar per date quickly,
@@ -362,36 +362,18 @@ class GenericBacktester:
         
         # Iterate backwards - data is chronologically sorted, so we hit last bar of each date first
         for bar in reversed(data):
-            timestamp = bar.get('timestamp', '')
-            if not timestamp:
-                continue
-            
-            # Extract date string without conversion (DD/MM/YYYY from "DD/MM/YYYY HH:MM:SS")
-            try:
-                parts = timestamp.split(' ')
-                date_str = parts[0]  # "DD/MM/YYYY"
-                time_str = parts[1] if len(parts) > 1 else ""  # "HH:MM:SS"
-                if date_str.count('/') != 2:
-                    continue
-            except:
-                continue
+            timestamp: datetime = bar["timestamp"]
+            date = timestamp.date()
             
             # Skip if we've already processed this date
-            if date_str in seen_dates:
+            if date in seen_dates:
                 continue
+            else:
+                seen_dates.add(date)
             
-            seen_dates.add(date_str)
-            
-            # Parse only this timestamp to check if it's an early close
-            bar_dt = self._parse_datetime(timestamp)
-            if bar_dt:
-                # Early close: last bar is before 4:00 PM CT (16:00)
-                if bar_dt.hour < 16 or (bar_dt.hour == 16 and bar_dt.minute == 0):
-                    # Store as YYYY-MM-DD -> HH:MM
-                    date_key = bar_dt.strftime('%Y-%m-%d')
-                    time_key = bar_dt.strftime('%H:%M')
-                    early_close_dates[date_key] = time_key
-        
+            # Early close: last bar is before 4:00 PM CT (16:00)
+            if timestamp.hour < 16:
+                early_close_dates[date] = timestamp.time()
         return early_close_dates
     
     def run(self, strategy, data: List[Dict[str, Any]]) -> BacktestResult:
@@ -416,6 +398,7 @@ class GenericBacktester:
         
         # Detect early close dates (holiday early closes) to force close positions earlier
         early_close_dates = self._detect_early_close_dates(data)
+        
         if self.verbose and early_close_dates:
             print(f"Detected {len(early_close_dates)} early close dates")
             for date_key, close_time in sorted(early_close_dates.items())[:5]:
@@ -512,17 +495,13 @@ class GenericBacktester:
                 self._position_size = 0
                 entry_time = None
                 remaining_quantity = 0 # Ensure no negative
-                if self.verbose:
-                    # Optional: Log full closure
-                    pass
 
         for i, bar in enumerate(data):
             # Cache bar fields to avoid repeated dict.get() calls (3-5x per bar)
-            timestamp =  bar["timestamp"]
+            timestamp: datetime =  bar["timestamp"]
             open_price = bar["open"]
 
             # Convert timestamp string to datetime (only if needed for session checks)
-            bar_dt = None
             bar_time = None
             bar_date = None
             
@@ -534,28 +513,24 @@ class GenericBacktester:
             
             # Check if today is an early close day (holiday)
             is_early_close_day = bar_date in early_close_dates
-            
+                
             # Dynamic force-close time: 1 minute before the last bar time
-            force_close_time = None
             trading_halt_time = None
+            force_close_time = None
             
-            if is_early_close_day and bar_date in early_close_dates:
-                # Get the last bar time (e.g., "11:55")
-                last_bar_time_str = early_close_dates[bar_date]  # HH:MM
-                try:
-                    lh, lm = map(int, last_bar_time_str.split(':'))
-                    force_close_time = time(lh, lm)
-                    
-                    # No new trades 15 minutes before close (e.g., if close is 11:55, block after 11:40)
-                    if lm >= 15:
-                        trading_halt_time = time(lh, lm - 15)
-                    else:
-                        trading_halt_time = time(lh - 1, lm + 60 - 15)
-                except:
-                    pass
+            if is_early_close_day:
+                last_bar_time = early_close_dates[bar_date]
+                force_close_time = last_bar_time
+                closing_hour, closing_minute = last_bar_time.hour, last_bar_time.minute
+                
+                # No new trades 15 minutes before close (e.g., if close is 11:55, block after 11:40)
+                if closing_minute >= 15:
+                    trading_halt_time = time(closing_hour, closing_minute - 15)
+                else:
+                    trading_halt_time = time(closing_hour - 1, closing_minute + 60 - 15)
             
             # EARLY CLOSE: Force-close all positions at 1 minute before close time on early close days
-            if force_close_time and is_early_close_day and bar_time and bar_time >= force_close_time and self._trade_direction != 0 and remaining_quantity > 0:
+            if is_early_close_day and bar_time >= force_close_time and remaining_quantity > 0:
                 # UNIFIED EXIT: Close entire remaining quantity
                 if self.verbose:
                     print(f"EARLY CLOSE: Forced position close at {timestamp} on holiday")
@@ -563,7 +538,7 @@ class GenericBacktester:
             
             # Block new trades based on market session
             is_new_trade_allowed = False
-            if is_early_close_day and trading_halt_time:
+            if is_early_close_day:
                 # Block new trades 15 min before early close
                 is_new_trade_allowed = bar_time and bar_time >= trading_halt_time
             else:
