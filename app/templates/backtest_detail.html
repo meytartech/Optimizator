@@ -658,28 +658,28 @@ async function saveDescription() {
         }
     }
 }
-// Format timestamp as dd-mm-yy hh:mm
+// Format timestamp as dd/mm/yyyy hh:mm
     function formatTimestamp(ts) {
         if (!ts) return '';
         // Try to match yyyy-mm-dd hh:mm:ss or yyyy-mm-dd hh:mm:ss.SSSSSS
         const match = ts.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
         if (match) {
-            const day = match[3];
-            const month = match[2];
-            const year = match[1].slice(2);
+            const year = match[1];
+            const month = match[2].padStart(2, '0');
+            const day = match[3].padStart(2, '0');
             const hour = match[4];
             const min = match[5];
-            return `${day}-${month}-${year} ${hour}:${min}`;
+            return `${day}/${month}/${year} ${hour}:${min}`;
         }
         // Try to match dd/mm/yyyy hh:mm:ss
         const match2 = ts.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
         if (match2) {
             const day = match2[1].padStart(2, '0');
             const month = match2[2].padStart(2, '0');
-            const year = match2[3].slice(2);
+            const year = match2[3];
             const hour = match2[4].padStart(2, '0');
             const min = match2[5];
-            return `${day}-${month}-${year} ${hour}:${min}`;
+            return `${day}/${month}/${year} ${hour}:${min}`;
         }
         return ts;
     }
