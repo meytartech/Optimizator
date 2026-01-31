@@ -104,7 +104,7 @@ For complete strategy development guidelines including filename/class mapping, s
 | `app/templates/` | Flask Jinja2 templates for web UI pages |
 | `app/static/css/` | CSS stylesheets: `theme.css` (global) + page-specific files |
 | `app/static/js/` | JavaScript for interactive components |
-| `core/base_strategy.py` | Abstract `BaseStrategy` class and `TradeSignal` dataclass |
+| `core/base_strategy.py` | Abstract `BaseStrategy` class|
 | `core/backtester.py` | `GenericBacktester`: runs strategy, tracks trades, computes metrics |
 | `core/optimizer.py` | `StrategyOptimizer`: grid search over parameter ranges |
 | `core/score_loader.py` | `ScoreDataLoader`: loads SQLite score data OR combined .db (OHLC+scores in one file) |
