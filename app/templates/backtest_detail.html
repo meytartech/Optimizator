@@ -824,6 +824,14 @@ function sortTrades(trades) {
     const columnName = columnMap[sortConfig.column];
     
     trades.sort((a, b) => {
+        // Special-case date/time columns: parse to Date for accurate chronological sort
+        if (columnName === 'entry_time' || columnName === 'exit_time') {
+            const aDate = parseTimestamp(a[columnName]) || new Date(0);
+            const bDate = parseTimestamp(b[columnName]) || new Date(0);
+            const diff = aDate - bDate;
+            return sortConfig.ascending ? diff : -diff;
+        }
+
         let aVal = a[columnName];
         let bVal = b[columnName];
         
@@ -1467,8 +1475,17 @@ function parseTimestamp(tsStr) {
     if (!tsStr) return null;
     const match1 = tsStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
     if (match1) return new Date(match1[3], match1[2] - 1, match1[1], match1[4], match1[5], match1[6]);
+
+    // dd/mm/yyyy HH:MM (no seconds)
+    const match1b = tsStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+    if (match1b) return new Date(match1b[3], match1b[2] - 1, match1b[1], match1b[4], match1b[5], 0);
+
     const match2 = tsStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})/);
     if (match2) return new Date(match2[1], match2[2] - 1, match2[3], match2[4], match2[5], match2[6]);
+
+    // yyyy-mm-dd HH:MM (no seconds)
+    const match2b = tsStr.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})$/);
+    if (match2b) return new Date(match2b[1], match2b[2] - 1, match2b[3], match2b[4], match2b[5], 0);
 
     const match3 = tsStr.match(/(\d{4})-(\d{2})-(\d{2})T(\d{1,2}):(\d{2}):(\d{2})/);
     if (match3) return new Date(match3[1], match3[2] - 1, match3[3], match3[4], match3[5], match3[6]);
